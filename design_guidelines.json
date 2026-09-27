@@ -1,0 +1,147 @@
+{
+  "theme": "dark",
+  "theme_strategy": "Swiss Brutalist / Archetype 4 - High-Contrast Technical Authority",
+  "typography": {
+    "fonts": {
+      "headings": "IBM Plex Sans",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-5xl sm:text-6xl tracking-tighter font-black",
+      "h2": "text-3xl sm:text-4xl tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed font-light",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold"
+    },
+    "rules": [
+      "NO Space Grotesk.",
+      "NO generic sans (Inter, Roboto) for headings.",
+      "Use radical weight contrast: Black for main titles, Light for body text.",
+      "Keep line lengths (ch) constrained for readability.",
+      "Headings must use tracking-tight or tracking-tighter."
+    ]
+  },
+  "colors": {
+    "background": {
+      "primary": "#0A0A0A",
+      "secondary": "#121212",
+      "surface": "#1A1A1A"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    },
+    "accent": {
+      "primary": "#FF3B30", 
+      "secondary": "#FFD60A",
+      "tertiary": "#0055FF"
+    },
+    "borders": "#27272A",
+    "forbidden": [
+      "#1B93A4",
+      "#7351B7",
+      "Pure transparent backgrounds over text"
+    ],
+    "rules": [
+      "Color is Function Only. 95% of UI must be monochrome.",
+      "Accents (Signal Red) used strictly for interactive states, warnings, or diagram highlights.",
+      "No full-screen gradients. Use matte, physical, technical vibes."
+    ]
+  },
+  "layouts": {
+    "spacing": "Generous Spacing Philosophy. Use p-8, p-12, or p-16 inside large containers.",
+    "grid": {
+      "type": "Technical Grid Borders",
+      "behavior": "Visible skeleton. Expose the grid. Use 'border-collapse' style layout for data and module features. Grid items have 'border-r border-b border-white/10'.",
+      "bento_mode": "High Density Grid for diagrams/specs: grid-cols-1 md:grid-cols-3 lg:grid-cols-4. Every pixel utilized. h-full on children."
+    },
+    "header": {
+      "style": "Solid background #0A0A0A with a hard bottom border (1px border-white/10). No pure transparency.",
+      "navigation": "Visible desktop links. Minimal logo + Core sections (Architecture, Components, Roadmap) + Primary CTA."
+    },
+    "surface": {
+      "style": "Grid Borders and Flat Solid. No glassmorphism for technical documentation to prevent refraction of precise data.",
+      "radius": "rounded-none or max 4px (rounded-sm) for a sharp engineering feel.",
+      "shadows": "None. Rely on 1px solid borders."
+    }
+  },
+  "components": {
+    "strategy": "Shadcn components heavily customized. Strip default Vercel-look. Apply sharp corners and 1px borders.",
+    "buttons": "Flat, sharp borders, high-contrast hover states. Eg: bg-white text-black rounded-none hover:bg-[#FF3B30] hover:text-white transition-colors duration-200.",
+    "cards": "Flat background, 1px border-white/10, rounded-none. Hover: slight lift (-translate-y-1) and border-white/30.",
+    "interactive": "Must explicitly set text color on hover. Use 1px inner stroke for separation."
+  },
+  "motion": {
+    "strategy": "Minimalist - functional feedback only.",
+    "hover": "Instant color swaps or subtle 0.2s ease transitions for borders/text.",
+    "entrance": "Staggered fade-up for markdown sections or architecture diagram blocks.",
+    "rules": [
+      "No 'transition: all'. Explicit properties only.",
+      "Respect prefers-reduced-motion.",
+      "Animations should feel precise and mechanical, not bouncy."
+    ]
+  },
+  "media": {
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "style": "Sharp or Regular weights. Avoid playful icons. Maintain the C++/EDA serious vibe."
+    },
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1592659762303-90081d34b277?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNzl8MHwxfHNlYXJjaHwyfHxlbGVjdHJvbmljJTIwY2lyY3VpdCUyMHBjYnxlbnwwfHx8fDE3OTA0OTY3Mzh8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Hero / Background Texture",
+        "description": "Macro shot of a dark blue PCB circuit board. Perfect for the ArduLab technical landing or architecture overview header."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1503387837-b154d5074bd2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2Mzl8MHwxfHNlYXJjaHw0fHxibHVlcHJpbnQlMjBhcmNoaXRlY3R1cmUlMjBlbmdpbmVlcmluZ3xlbnwwfHx8fDE3OTA0OTY3Mzh8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Section Image",
+        "description": "Blueprint architecture drafting. Great for the 'Schematic Engine' or 'Architecture Roadmap Phase' visual."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNzl8MHwxfHNlYXJjaHwzfHxlbGVjdHJvbmljJTIwY2lyY3VpdCUyMHBjYnxlbnwwfHx8fDE3OTA0OTY3Mzh8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Data / Technical Context",
+        "description": "Black circuit board macro. Use for the 'Component Engine' or 'Connection Core' representation."
+      }
+    ]
+  },
+  "3d_and_creative_libraries": {
+    "strategy": "Since this is an Architecture Document, rely on structural UI and clean C4/Mermaid diagram renderings. Do not overuse 3D unless visualizing module graphs.",
+    "recommended": [
+      "react-markdown with custom renderer for technical layouts",
+      "framer-motion for simple, mechanical transitions between document sections"
+    ]
+  },
+  "accessibility": {
+    "contrast": "APCA preferred. Normal text > 4.5:1. Never use gray-on-gray for active UI.",
+    "focus": "High contrast ring focus: focus:outline-none focus:ring-2 focus:ring-[#FF3B30] focus:ring-offset-2 focus:ring-offset-[#0A0A0A].",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "instructions_to_main_agent": [
+    "You are building a web-based, standalone UI for the 'ArduLab Software Architecture Document v1.0'.",
+    "This must look like a high-end, elite engineering/developer documentation portal or architectural landing page.",
+    "Do NOT build the actual C++/Qt app. Build the web frontend to present this architecture document cleanly.",
+    "Focus on markdown rendering aesthetics, C4 diagram representations, module breakdowns, and database ER modeling UI.",
+    "Apply the 'Grid Borders' style globally to make the site feel like an engineering schematic.",
+    "Avoid typical SaaS looks. Make it rigid, technical, and precise.",
+    "Ensure the hero section sets an 'offline-first Electronic Engineering Platform' context."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid the 'AI slop' aesthetic. Make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) ONLY WHERE APPROPRIATE (Avoid in clinical/tech sections if it reduces clarity).",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts reading flow.",
+    "Always use modern button styles like sharp or pill-shaped with interaction animations.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, custom selection states, and loading animations separate good from extraordinary.",
+    "Main agent relies on the provided image URLs. Missing categories = placeholder text which is FORBIDDEN.",
+    "Prioritize using pre-existing components from src/components/ui.",
+    "Use sonner for toasts from /app/frontend/src/components/ui/sonner.tsx (if applicable in project structure)."
+  ]
+}
