@@ -1,0 +1,71 @@
+{
+  "mode": "generate",
+  "iteration": 1,
+  "artifact_under_review": "/app/ArduLab v0.1.3 Catalog Architecture Decision Record (ADR) v1.0.md",
+  "summary": "This task is documentation-only (an Architecture Decision Record). The running app (FastAPI backend + Vite/React frontend) is the unmodified template scaffold -- server.py only exposes the default /api/ and /api/status stub routes, and the frontend is the default template UI. There is no ArduLab feature UI and no ArduLab-specific API to click through or curl; the public preview does not render the ADR (confirmed in spec_deviations). Every acceptance criterion is a pure content/contract requirement of the Markdown document itself, so each criterion was verified by direct textual inspection of the ADR (with line references) rather than a browser or backend test artifact. No browser checks or pytest files were created because there is no corresponding UI or API surface to exercise -- fabricating one against the template stub would not validate anything real.",
+  "passed": 8,
+  "failed": 0,
+  "checks": [
+    {
+      "criterion": "Connection Core support",
+      "name": "doc-review-connection-core",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 3.6 (lines 288-324) defines pin_id/anchor_position/electrical_rules and the immutable CatalogPinRef tuple (catalog_scope+component_id+component_version_id+pin_number); states Connection Core creates project-local ConnectionPoint/Wire/Junction/Net from those refs and 'Those project relationships remain in .FAL; they are not catalog rows.' Sec 12 matrix row 'Connection Core...PASS' (line 1124) confirms Connection Core/.FAL ownership of wires/junctions/nets."
+    },
+    {
+      "criterion": "Schematic Engine support",
+      "name": "doc-review-schematic-engine",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 3.11 (lines 383-395) defines symbol_id/component_version_id/pin_map and states 'Schematic Engine owns placement, wires, junctions, labels, and ERC execution...ERC consumes catalog pin type, direction, electrical rules, and Connection Core net membership.' Sec 5 dependency rules (line 630) and Sec 12 matrix row (line 1125) mark this PASS with required electrical metadata."
+    },
+    {
+      "criterion": "Simulation Engine support",
+      "name": "doc-review-simulation-engine",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 3.12 (lines 397-412) defines typed component_parameters with value_type/unit; Sec 3.10 (369-381) defines simulation_model_id, parameters, and pin_mapping (model terminal to catalog pin). Sec 12 matrix row (line 1126) confirms typed parameters, units, model reference, and terminal mapping -> PASS."
+    },
+    {
+      "criterion": "PCB Engine support",
+      "name": "doc-review-pcb-engine",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 3.5 (271-284) defines package width/height/pitch; Sec 3.9 (354-366) defines footprint_id/pin_map; Sec 3.13 (414-431) defines footprint_pads with pad geometry and pin_number-to-pad mapping, stating 'PCB Engine receives package dimensions, footprint identity, complete pad geometry, and exact pin-to-pad mapping.' Sec 12 matrix row (line 1127) -> PASS."
+    },
+    {
+      "criterion": "Stable IDs and migrations",
+      "name": "doc-review-stable-ids-migrations",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 6.5 Stable ID migration policy (lines 705-713): 'A migration never rewrites component_id in place. Legacy IDs remain resolvable through component_aliases... component_version_id is immutable after activation... Pin numbers remain stable within a compatible version line. Renumbering pins is a major component version change.' Matches invariants #2/#4 in Sec 1.3."
+    },
+    {
+      "criterion": ".FAL backward compatibility",
+      "name": "doc-review-fal-compat",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 11.5 (lines 1072-1098) defines the additive optional catalog reference contract (catalog_scope, component_id, component_version_id, content_hash) and states: 'If the exact catalog version is unavailable, ArduLab opens the project with an unresolved-component diagnostic, preserves connectivity and instance IDs, and never substitutes another version automatically.' fallback_snapshot explicitly documented as read-only, non-editable."
+    },
+    {
+      "criterion": "Custom and trusted component separation",
+      "name": "doc-review-scope-separation",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 9.4 (lines 928-943) defines catalog_scope (OFFICIAL/COMMUNITY/USER) as 'separate from lifecycle status' and states USER records are 'first-class catalog records' supporting the same package/pin/symbol/footprint/parameter/simulation/versioning/validation contracts, with scope part of lookup identity and provenance preserved on promotion."
+      },
+    {
+      "criterion": "Implementation approval readiness",
+      "name": "doc-review-implementation-readiness",
+      "lane": "doc",
+      "status": "passed",
+      "evidence": "Sec 12 Final Future-Module Consistency Matrix (lines 1120-1131) marks all 7 rows PASS. Sec 1.1 (lines 49-62) lists stable modules unaffected. Sec 14 (lines 1160-1195): 'Architecture readiness: PASS...Implementation remains gated on the complete Qt6/C++ source tree and an explicit instruction to begin coding.' Checklist item 'Complete source tree available...' remains unchecked (line 1155), consistent with gating."
+    }
+  ],
+  "bugs": [],
+  "action_items": [
+    "No UI or backend artifact was created because this iteration is documentation-only per the briefing (mode: generate, spec_deviations note the app is not the production ArduLab target and no source/schema/migrations/AI integration should exist yet). The unmodified FastAPI/React template stub was confirmed running (GET /api/ -> {\"message\":\"Hello World\"}; frontend serves default Vite template), so there is genuinely no app-level surface tied to these 8 criteria to browser/backend-test."
+  ],
+  "retest_needed": false
+}

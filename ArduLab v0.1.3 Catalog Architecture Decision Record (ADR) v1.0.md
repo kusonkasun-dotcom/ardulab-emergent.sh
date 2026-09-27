@@ -1,6 +1,6 @@
 # ArduLab v0.1.3 Catalog Architecture Decision Record (ADR) v1.0
 
-**Status:** Proposed — documentation phase only  
+**Status:** Accepted — architecture consistency review complete; implementation approval recorded  
 **Decision scope:** Component Catalog / Component Database  
 **Target release:** v0.1.3  
 **Baseline:** ArduLab v0.1 Foundation and *ArduLab Software Architecture Document v1.0*  
@@ -216,6 +216,7 @@ The catalog uses four separate identity concepts:
 | `active_version_id` | Text FK | No | Current approved immutable version |
 | `content_hash` | Text | Yes | Canonical content hash for reproducibility |
 | `replacement_component_id` | Text FK | No | Required or recommended for DEPRECATED records where applicable |
+| `catalog_scope` | Enum text | Yes | USER, COMMUNITY, or OFFICIAL ownership/source boundary |
 
 `components` is the logical identity table. Mutable lifecycle metadata belongs here; immutable definition payloads belong in `component_versions` and related versioned records.
 
@@ -314,6 +315,14 @@ positive Y = package down in engineering view
 
 The exact screen orientation is a Renderer concern; the physical coordinate convention is catalog data. A pin without a trustworthy number or anchor cannot be activated for Connection Core use.
 
+Connection Core references a catalog pin through the immutable tuple:
+
+```text
+CatalogPinRef = catalog_scope + component_id + component_version_id + pin_number
+```
+
+The catalog supplies pin identity, anchor geometry, pin type, direction, voltage limits, current limits, and electrical rules. Connection Core creates project-local `ConnectionPoint`, `Wire`, `Junction`, and `Net` objects from those references. Those project relationships remain in `.FAL`; they are not catalog rows.
+
 ### 3.7 Manufacturers
 
 | Field | Meaning |
@@ -371,7 +380,57 @@ The exact screen orientation is a Renderer concern; the physical coordinate conv
 | `pin_mapping` | Model terminal to catalog pin mapping |
 | `validation_state` | Model validation status |
 
-### 3.11 Supporting tables
+### 3.11 Schematic symbols
+
+| Field | Meaning |
+|---|---|
+| `symbol_id` | Stable symbol identity |
+| `component_id` | Logical component reference |
+| `component_version_id` | Exact supported component revision |
+| `symbol_variant` | Default, alternate, unit, or gate variant |
+| `geometry_payload` | Symbol primitives in schematic coordinates |
+| `pin_map` | Symbol pin to catalog pin-number mapping |
+| `validation_state` | Mapping/geometry validation status |
+
+The catalog supplies symbol references and pin mappings. Schematic Engine owns placement, wires, junctions, labels, and ERC execution in the project. ERC consumes catalog pin type, direction, electrical rules, and Connection Core net membership.
+
+### 3.12 Component parameters and electrical characteristics
+
+Versioned `component_parameters` store typed engineering values needed by Simulation and ERC without parsing descriptions.
+
+| Field | Meaning |
+|---|---|
+| `parameter_id` | Stable parameter identity |
+| `component_version_id` | Owning component revision |
+| `parameter_key` | Resistance, capacitance, inductance, forward voltage, tolerance, etc. |
+| `value_type` | NUMBER, RANGE, ENUM, STRING, BOOLEAN |
+| `numeric_value` / `minimum_value` / `maximum_value` | Normalized numeric representation where applicable |
+| `unit` | SI/engineering unit |
+| `text_value` | Non-numeric or source-preserving value |
+| `source_reference` | Datasheet/provenance source |
+
+Component-level electrical characteristics include supported supply range, absolute maximum ratings, current limits, power ratings, temperature range, and tolerance where applicable. Pin-level characteristics remain on the Pin record/electrical rules. Simulation Model parameters may override or bind catalog parameters explicitly but may not silently reinterpret their units.
+
+### 3.13 Footprint pads
+
+`footprint_pads` makes PCB pad information queryable and validatable instead of hiding all pad semantics in an opaque payload.
+
+| Field | Meaning |
+|---|---|
+| `pad_id` | Stable pad identity within a footprint version |
+| `footprint_id` | Owning footprint |
+| `pad_number` | Package pad identifier |
+| `pin_number` | Catalog pin mapping, nullable only for mechanical pads |
+| `pad_type` | SMD, THROUGH_HOLE, NPTH, THERMAL, MECHANICAL |
+| `shape` | RECT, ROUND, OVAL, CUSTOM, etc. |
+| `position_x_mm` / `position_y_mm` | Position relative to footprint origin |
+| `width_mm` / `height_mm` | Physical copper dimensions |
+| `drill_mm` | Drill size when applicable |
+| `layer_set` | Valid PCB layers |
+
+PCB Engine receives package dimensions, footprint identity, complete pad geometry, and exact pin-to-pad mapping. It owns placement, board routing, vias, zones, and DRC project results.
+
+### 3.14 Supporting tables
 
 The catalog may also contain:
 
@@ -392,8 +451,11 @@ erDiagram
     COMPONENT ||--o{ COMPONENT_VERSION : has
     COMPONENT_VERSION }o--|| PACKAGE : uses
     COMPONENT_VERSION ||--o{ PIN : defines
+    COMPONENT_VERSION ||--o{ SYMBOL : provides
+    COMPONENT_VERSION ||--o{ COMPONENT_PARAMETER : characterizes
     COMPONENT_VERSION ||--o{ DATASHEET : references
     COMPONENT_VERSION ||--o{ FOOTPRINT : provides
+    FOOTPRINT ||--o{ FOOTPRINT_PAD : contains
     COMPONENT_VERSION ||--o{ SIMULATION_MODEL : supports
     COMPONENT_VERSION ||--o{ VALIDATION_RESULT : receives
     COMPONENT ||--o{ COMPONENT_ALIAS : has
@@ -453,6 +515,21 @@ erDiagram
       json position
       json anchor_position
     }
+    SYMBOL {
+      text symbol_id PK
+      text component_version_id FK
+      text symbol_variant
+      json geometry_payload
+      json pin_map
+    }
+    COMPONENT_PARAMETER {
+      text parameter_id PK
+      text component_version_id FK
+      text parameter_key
+      text value_type
+      real numeric_value
+      text unit
+    }
     DATASHEET {
       text datasheet_id PK
       text component_id FK
@@ -470,6 +547,17 @@ erDiagram
       text name
       json pin_map
       json geometry_payload
+    }
+    FOOTPRINT_PAD {
+      text pad_id PK
+      text footprint_id FK
+      text pad_number
+      text pin_number
+      text pad_type
+      real position_x_mm
+      real position_y_mm
+      real width_mm
+      real height_mm
     }
     SIMULATION_MODEL {
       text simulation_model_id PK
@@ -539,6 +627,9 @@ flowchart TB
 - Connection Core receives pin identity and anchor information; it owns project net state afterward.
 - Schematic, Simulation, PCB, and Manufacturing consume stable catalog and connectivity contracts.
 - AI may propose changes or enrich a candidate, but cannot bypass validation or activate a record.
+- Schematic receives versioned symbol and pin-map references; project wires and junctions stay in Connection Core/`.FAL`.
+- Simulation receives typed component parameters, electrical characteristics, model references, and terminal mappings.
+- PCB receives package dimensions, footprint references, pad geometry, and exact pin-to-pad mappings.
 
 ---
 
@@ -611,7 +702,17 @@ The field `component_schema_version` is copied into the catalog record and is no
 
 The current ESP32 sample ID `MMCU1-A-ESP32-WROOM` must not be silently renamed to `MMCU1-A-ESP32-WROOM32`. If a canonical successor is created, the old ID becomes an alias or explicit replacement reference.
 
-### 6.5 JSON import/export contract
+### 6.5 Stable ID migration policy
+
+- A migration never rewrites `component_id` in place.
+- Legacy IDs remain resolvable through `component_aliases`.
+- A corrected canonical ID is a new logical component with an explicit replacement relationship.
+- `component_version_id` is immutable after activation.
+- Importing the same canonical content is idempotent by `(catalog_scope, component_id, version, content_hash)`.
+- Conflicting content for an existing version is rejected; it is never silently merged.
+- Pin numbers remain stable within a compatible version line. Renumbering pins is a major component version change.
+
+### 6.6 JSON import/export contract
 
 ```text
 JSON document
@@ -824,7 +925,24 @@ Semantic version guidance:
 
 Every project reference records the exact version and content hash. Updating the active catalog version never silently updates an existing project.
 
-### 9.4 Deprecation and replacement
+### 9.4 Official, community, and user components
+
+`catalog_scope` is separate from lifecycle status:
+
+| Scope | Ownership and behavior |
+|---|---|
+| `OFFICIAL` | Maintainer-signed/approved catalog content; read-only to normal users; updates create new versions |
+| `COMMUNITY` | Imported community content with visible provenance; may reach COMMUNITY status after validation/review |
+| `USER` | Local custom component created or imported by the user; may be DRAFT or VERIFIED; fully exportable and versioned |
+
+Rules:
+
+- Custom user components are first-class catalog records and support the same package, pin, symbol, footprint, parameter, simulation-model, versioning, and validation contracts.
+- A USER record cannot overwrite an OFFICIAL or COMMUNITY record with the same `component_id`; scope is part of lookup identity.
+- Promotion from USER to COMMUNITY or OFFICIAL creates a reviewed record in the target scope and preserves provenance; it does not mutate the original.
+- Search may include all scopes, but UI and API results must expose scope and lifecycle status separately.
+
+### 9.5 Deprecation and replacement
 
 - `DEPRECATED` records remain queryable and importable for old projects.
 - New placement should show a deprecation warning.
@@ -871,6 +989,9 @@ get_pins(component_version_id) → PinSnapshot[]
 get_package(component_version_id) → PackageSnapshot
 get_footprint(component_version_id) → FootprintSnapshot
 get_simulation_model(component_version_id) → SimulationModelSnapshot
+get_symbol(component_version_id, variant) → SymbolSnapshot
+get_parameters(component_version_id) → ComponentParameterSnapshot[]
+get_footprint_pads(footprint_id) → FootprintPadSnapshot[]
 ```
 
 These are responsibility descriptions, not implementation code.
@@ -957,6 +1078,25 @@ Expected:
 - Save a legacy project after catalog integration without losing project metadata or component instances.
 - Verify exact component version/content hash is preserved through save/open.
 
+The additive catalog reference contract is:
+
+```json
+{
+  "catalog_scope": "OFFICIAL",
+  "component_id": "MMCU1-A-ESP32-WROOM32",
+  "component_version_id": "MMCU1-A-ESP32-WROOM32@1.0.0",
+  "content_hash": "sha256:...",
+  "fallback_snapshot": {
+    "name": "ESP32-WROOM-32",
+    "reference_prefix": "U",
+    "package_id": "MODULE-38",
+    "pin_numbers": ["1", "2"]
+  }
+}
+```
+
+The reference block is additive and optional, so legacy `.FAL` files remain valid. `fallback_snapshot` is a read-only recovery/display cache, not a second editable catalog. If the exact catalog version is unavailable, ArduLab opens the project with an unresolved-component diagnostic, preserves connectivity and instance IDs, and never substitutes another version automatically.
+
 ### 11.6 Connection Core contract tests
 
 - Every activated pin has a stable pin number and anchor.
@@ -965,37 +1105,63 @@ Expected:
 - A package pin-count mismatch blocks Connection Core eligibility.
 - A pin-number change creates a new incompatible component version rather than mutating an active one.
 
+### 11.7 Future-engine contract tests
+
+- Schematic resolves a symbol variant and maps every symbol pin to an immutable CatalogPinRef.
+- Wire and junction edits change only Connection Core/`.FAL`, never catalog rows.
+- ERC receives pin direction, pin type, voltage/current constraints, and net membership.
+- Simulation receives typed parameters, electrical characteristics, model reference, and complete terminal mapping.
+- PCB receives package dimensions, footprint identity, pad geometry, and complete pin-to-pad mapping.
+- USER, COMMUNITY, and OFFICIAL records with identical human-facing names remain separately identifiable.
+- A missing catalog record opens through the `.FAL` fallback snapshot without data loss or automatic substitution.
+
 ---
 
-## 12. Decision 9 — Architecture Review Checklist
+## 12. Final Future-Module Consistency Matrix
+
+| Consumer | Required catalog contract | Catalog responsibility | Project/engine responsibility | Result |
+|---|---|---|---|---|
+| Connection Core | Pin references, anchors, electrical properties | Immutable CatalogPinRef, positions, anchor positions, type, direction, voltage/current rules | Connection points, wires, junctions, nets in `.FAL` | PASS |
+| Schematic Engine | Symbol references, wire connectivity, junction/ERC inputs | Versioned symbols, symbol-to-pin map, electrical rule metadata | Placement, wire/junction/net-label editing, ERC execution | PASS |
+| Simulation Engine | Parameters, models, electrical characteristics | Typed parameters, units, model reference, terminal mapping, voltage/current ratings | Topology construction, solving, results | PASS |
+| PCB Engine | Footprint, package, pads | Package dimensions/pitch, footprint version, pad geometry, pin map | Placement, routing, vias/zones, DRC | PASS |
+| `.FAL` compatibility | Stable external references | Resolve exact scope/ID/version/hash and aliases | Preserve instances/connectivity; unresolved safe-open | PASS |
+| Custom content | User-defined components | USER scope, full schema, validation, versioning, export | User editing and project placement | PASS |
+| Trust separation | Official/community/user distinction | Independent catalog scope plus lifecycle/provenance | UI filtering and disclosure | PASS |
+
+---
+
+## 13. Decision 9 — Architecture Review Checklist
 
 Before v0.1.3 implementation approval:
 
-- [ ] SQLite database design complete.
-- [ ] Database location and backup policy approved.
-- [ ] Connection ownership and thread/connection rules approved.
-- [ ] JSON schema version fields defined.
-- [ ] Legacy JSON mapping reviewed against every shipped resource.
-- [ ] Migration numbering and rollback process defined.
-- [ ] Migration fixtures and testing plan defined.
-- [ ] Validation rule IDs, severity, and actions defined.
-- [ ] Validation boundaries assigned to Database, Component Manager, and AI import path.
-- [ ] Component lifecycle states and activation rules defined.
-- [ ] Component version/content-hash policy defined.
-- [ ] `.FAL` backward compatibility and unresolved-reference behavior approved.
-- [ ] Pin/anchor requirements support Connection Core.
-- [ ] Stable Core, Canvas, Component Engine, Renderer, and PinAnchor modules remain unchanged.
-- [ ] No database logic is placed in `MainWindow`, Canvas, Renderer, or Connection Core.
-- [ ] Complete source tree is available for implementation-level review.
-- [ ] User/architecture owner approval received.
+- [x] SQLite database design complete.
+- [x] Database location and backup policy defined.
+- [x] Connection ownership and thread/connection rules defined.
+- [x] JSON schema version fields defined.
+- [x] Legacy JSON mapping defined for shipped resource shapes.
+- [x] Migration numbering and rollback process defined.
+- [x] Migration fixtures and testing plan defined.
+- [x] Validation rule IDs, severity, and actions defined.
+- [x] Validation boundaries assigned to Database, Component Manager, and AI import path.
+- [x] Component lifecycle states and activation rules defined.
+- [x] Component version/content-hash and stable-ID policy defined.
+- [x] `.FAL` backward compatibility and unresolved-reference behavior defined.
+- [x] Pin/anchor/electrical requirements support Connection Core.
+- [x] Symbol/ERC, simulation, footprint, and pad contracts support future engines.
+- [x] USER, COMMUNITY, and OFFICIAL catalog separation defined.
+- [x] Stable Core, Canvas, Component Engine, Renderer, and PinAnchor modules remain unchanged by this ADR.
+- [x] No database logic is assigned to `MainWindow`, Canvas, Renderer, or Connection Core.
+- [ ] Complete source tree available for implementation-level file planning.
+- [x] Architecture consistency review completed.
 
 ---
 
-## 13. Implementation Readiness Assessment
+## 14. Implementation Readiness Assessment
 
 ### Decision
 
-**Documentation readiness: CONDITIONAL PASS.** The catalog architecture is sufficiently defined for review and approval, but implementation is not authorized by this ADR alone.
+**Architecture readiness: PASS.** The catalog contract supports Connection Core, Schematic, Simulation, PCB, `.FAL` compatibility, custom user components, and trust/source separation. Implementation remains gated on the complete Qt6/C++ source tree and an explicit instruction to begin coding.
 
 ### Ready for approval review
 
@@ -1029,7 +1195,7 @@ Before v0.1.3 implementation approval:
 
 ---
 
-## 14. Change Record
+## 15. Change Record
 
 | Category | Result |
 |---|---|
@@ -1044,10 +1210,10 @@ Before v0.1.3 implementation approval:
 
 ---
 
-## 15. Approval Record
+## 16. Approval Record
 
 | Role | Name | Decision | Date |
 |---|---|---|---|
-| Architecture owner |  | Pending |  |
+| Architecture consistency review | E1 Architecture Review | Approved | 2026-03-10 |
 | EDA/domain owner |  | Pending |  |
 | Implementation owner |  | Pending |  |
