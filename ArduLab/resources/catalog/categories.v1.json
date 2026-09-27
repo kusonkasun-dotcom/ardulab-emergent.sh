@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "categories": [
+    {"category_id": "MCU",        "name": "Microcontroller",        "parent_category_id": null, "is_system": true, "description": "Bare microcontroller IC"},
+    {"category_id": "MCU_MODULE", "name": "Microcontroller Module", "parent_category_id": null, "is_system": true, "description": "MCU carrier or radio module"},
+    {"category_id": "PASSIVE",    "name": "Passive",                "parent_category_id": null, "is_system": true, "description": "Resistors, capacitors, inductors"},
+    {"category_id": "DIODE",      "name": "Diode",                  "parent_category_id": null, "is_system": true, "description": "Rectifier, Zener, Schottky, ESD, LED"},
+    {"category_id": "ACTIVE",     "name": "Active",                 "parent_category_id": null, "is_system": true, "description": "Transistors, op-amps, logic and other ICs"},
+    {"category_id": "POWER",      "name": "Power",                  "parent_category_id": null, "is_system": true, "description": "Regulators, converters, protection"},
+    {"category_id": "SENSOR",     "name": "Sensor",                 "parent_category_id": null, "is_system": true, "description": "Environmental, motion, optical sensors"},
+    {"category_id": "ACTUATOR",   "name": "Actuator",               "parent_category_id": null, "is_system": true, "description": "Relays, motors, drivers"},
+    {"category_id": "CONNECTOR",  "name": "Connector",              "parent_category_id": null, "is_system": true, "description": "Headers, terminals, USB"}
+  ]
+}

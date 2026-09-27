@@ -1,0 +1,25 @@
+{
+  "project": {"name": "Legacy Board", "version": "0.1"},
+  "components": [
+    {
+      "instance_id": "U1",
+      "id": "MMCU1-A-ESP32-WROOM32",
+      "name": "ESP32",
+      "position": {"x_mm": 100.5, "y_mm": 80.25},
+      "legacy_visual": {"scale": 10, "color": "#333"},
+      "catalog_reference": {
+        "catalog_scope": "OFFICIAL",
+        "component_id": "MMCU1-A-ESP32-WROOM32",
+        "component_version_id": "MMCU1-A-ESP32-WROOM32@1.0.0",
+        "content_hash": "sha256:abc",
+        "fallback_snapshot": {"name": "ESP32-WROOM-32", "reference_prefix": "U", "package_id": "MODULE-38", "pin_numbers": ["1", "2"]}
+      }
+    },
+    {
+      "instance_id": "R1",
+      "id": "R1-A-0805-10K",
+      "position": {"x_mm": 20.0, "y_mm": 30.0}
+    }
+  ],
+  "future_section": {"keep": true, "nested": [1, 2, 3]}
+}

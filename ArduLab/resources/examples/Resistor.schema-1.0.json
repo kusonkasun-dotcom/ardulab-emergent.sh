@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "component_schema_version": "1.0",
+  "component_id": "R1-A-0805-10K",
+  "name": "Resistor 10k 0805",
+  "category_id": "PASSIVE",
+  "manufacturer_id": null,
+  "part_number": null,
+  "description": "Generic 10 kOhm thick-film chip resistor, 0805, 1%",
+  "version": "1.0.0",
+  "catalog_scope": "USER",
+  "package": {
+    "package_id": "0805",
+    "package_type": "0805",
+    "width_mm": 2.0,
+    "height_mm": 1.25,
+    "pin_count": 2,
+    "pitch_mm": null,
+    "unit": "mm"
+  },
+  "parameters": [
+    {"key": "resistance", "value": "10000", "unit": "Ohm", "type": "REAL"},
+    {"key": "tolerance",  "value": "1",     "unit": "%",   "type": "REAL"},
+    {"key": "power",      "value": "0.125", "unit": "W",   "type": "REAL"}
+  ],
+  "pins": [
+    {
+      "pin_number": "1", "pin_name": "P1", "pin_type": "PASSIVE", "direction": "PASSIVE", "side": "LEFT",
+      "position": {"x_mm": -1.0, "y_mm": 0.0},
+      "anchor_position": {"x_mm": -1.0, "y_mm": 0.0}
+    },
+    {
+      "pin_number": "2", "pin_name": "P2", "pin_type": "PASSIVE", "direction": "PASSIVE", "side": "RIGHT",
+      "position": {"x_mm": 1.0, "y_mm": 0.0},
+      "anchor_position": {"x_mm": 1.0, "y_mm": 0.0}
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/ardulab">
+        <file alias="catalog/categories.v1.json">catalog/categories.v1.json</file>
+        <file alias="examples/LegacyEmptyProject.FAL">examples/LegacyEmptyProject.FAL</file>
+        <file alias="examples/Resistor.schema-1.0.json">examples/Resistor.schema-1.0.json</file>
+    </qresource>
+</RCC>
