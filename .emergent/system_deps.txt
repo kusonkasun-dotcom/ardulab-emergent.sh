@@ -1,6 +1,6 @@
 cmake=3.25.1-1
+g++=4:12.2.0-3
 libgl1-mesa-dev=22.3.6-1+deb12u2
-libqt6sql6-sqlite=6.4.2+dfsg-10
 ninja-build=1.11.1-2~deb12u1
 qt6-base-dev=6.4.2+dfsg-10
 qt6-base-dev-tools=6.4.2+dfsg-10
