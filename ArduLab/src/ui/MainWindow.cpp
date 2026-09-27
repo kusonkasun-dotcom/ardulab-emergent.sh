@@ -82,6 +82,9 @@ void MainWindow::buildMenus()
 
     QMenu* catalogMenu = menuBar()->addMenu(tr("&Catalog"));
     catalogMenu->addAction(tr("&Refresh"), QKeySequence::Refresh, this, &MainWindow::onRefreshCatalog);
+    QAction* actImport = catalogMenu->addAction(tr("&Import Component…"), this, &MainWindow::onImportComponent);
+    actImport->setObjectName(QStringLiteral("CatalogImportAction"));
+    actImport->setEnabled(m_deps.componentImporter != nullptr);
     m_actPlace = catalogMenu->addAction(tr("&Place Selected Component"), QKeySequence(Qt::Key_Insert), this,
                                         &MainWindow::onPlaceSelectedComponent);
 
@@ -281,6 +284,58 @@ void MainWindow::onRefreshCatalog()
     }
     m_statusCatalog->setText(tr("Catalog: %n component(s)", nullptr, static_cast<int>(results.value().size())));
     updateActionStates();
+}
+
+void MainWindow::onImportComponent()
+{
+    if (m_deps.componentImporter == nullptr) {
+        statusBar()->showMessage(tr("Import is unavailable"), 3000);
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(this, tr("Import Component JSON"), QString(),
+                                                      tr("Component JSON (*.json);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    // The UI forwards a path only; JSON parsing and validation live behind the
+    // importer boundary (no SQL/JSON logic in MainWindow).
+    const auto result = m_deps.componentImporter->importFromFile(path, components::CatalogScope::User);
+    if (!result) {
+        reportError(result.error());
+        return;
+    }
+    const components::ImportReport& report = result.value();
+    QString detail;
+    for (const components::ImportMessage& m : report.messages) {
+        detail += QStringLiteral("• [%1] %2%3\n")
+                      .arg(QString::fromLatin1(components::importSeverityName(m.severity)),
+                           m.ruleId.isEmpty() ? QString() : (m.ruleId + QStringLiteral(": ")), m.message);
+    }
+
+    switch (report.outcome) {
+    case components::ImportOutcome::Imported:
+        statusBar()->showMessage(tr("Imported %1 (%2 warning(s))")
+                                     .arg(report.componentId.value())
+                                     .arg(report.warningCount()),
+                                 5000);
+        onRefreshCatalog();
+        if (report.warningCount() > 0) {
+            QMessageBox::information(this, tr("Component imported"),
+                                     tr("Imported %1 as DRAFT with warnings:\n\n%2")
+                                         .arg(report.componentId.value(), detail));
+        }
+        break;
+    case components::ImportOutcome::Skipped:
+        QMessageBox::information(this, tr("Component already present"),
+                                 tr("%1 was not imported:\n\n%2").arg(report.componentId.value(), detail));
+        break;
+    case components::ImportOutcome::Rejected:
+        QMessageBox::warning(this, tr("Import rejected"),
+                             tr("%1 was rejected:\n\n%2")
+                                 .arg(report.componentId.isEmpty() ? tr("component") : report.componentId.value(),
+                                      detail));
+        break;
+    }
 }
 
 void MainWindow::onPlaceSelectedComponent()

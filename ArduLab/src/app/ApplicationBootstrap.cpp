@@ -1,8 +1,13 @@
 #include "app/ApplicationBootstrap.h"
 
 #include "components/ComponentManager.h"
-#include "components/InMemoryComponentCatalog.h"
 #include "core/EventBus.h"
+#include "database/CatalogDatabase.h"
+#include "database/CatalogPaths.h"
+#include "database/SchemaMigrationRegistry.h"
+#include "database/SchemaMigrator.h"
+#include "database/SqliteComponentCatalog.h"
+#include "database/import/ComponentJsonImporter.h"
 #include "project/ProjectService.h"
 #include "ui/MainWindow.h"
 
@@ -13,71 +18,21 @@ namespace ardulab::app {
 
 namespace {
 
-// Foundation seed: the canonical R1-A-0805-10K example (mirrors
-// resources/examples/Resistor.schema-1.0.json). Constructed in memory so the
-// UI has a real snapshot to render before the JSON importer exists. The JSON
-// import path replaces this seed in the import phase.
-components::ComponentSnapshot canonicalResistorSeed()
-{
-    using namespace components;
-    Component c;
-    c.componentId = core::ComponentId(QStringLiteral("R1-A-0805-10K"));
-    c.name = QStringLiteral("Resistor 10k 0805");
-    c.categoryId = core::CategoryId(QStringLiteral("PASSIVE"));
-    c.description = QStringLiteral("Generic 10 kOhm thick-film chip resistor, 0805, 1%");
-    c.status = LifecycleStatus::Draft;
-    c.scope = CatalogScope::User;
-    c.version = QStringLiteral("1.0.0");
-    c.componentSchemaVersion = kCurrentComponentSchemaVersion;
-
-    ComponentVersion v;
-    v.componentId = c.componentId;
-    v.version = c.version;
-    v.versionId = core::makeComponentVersionId(c.componentId, c.version);
-    v.componentSchemaVersion = kCurrentComponentSchemaVersion;
-    v.contentHash = QStringLiteral("sha256:seed-r1-a-0805-10k-1.0.0");
-    v.sourceType = SourceType::Manual;
-    v.sourceReference = QStringLiteral(":/ardulab/examples/Resistor.schema-1.0.json");
-    v.createdBy = QStringLiteral("bootstrap-seed");
-
-    Package p;
-    p.packageId = core::PackageId(QStringLiteral("0805"));
-    p.packageType = QStringLiteral("0805");
-    p.bodySize = core::SizeMm(2.0, 1.25);
-    p.pinCount = 2;
-
-    Pin p1;
-    p1.pinNumber = QStringLiteral("1");
-    p1.pinName = QStringLiteral("P1");
-    p1.type = PinType::Passive;
-    p1.direction = PinDirection::Passive;
-    p1.side = PinSide::Left;
-    p1.position = core::PointMm(-1.0, 0.0);
-    p1.anchorPosition = core::PointMm(-1.0, 0.0);
-
-    Pin p2 = p1;
-    p2.pinNumber = QStringLiteral("2");
-    p2.pinName = QStringLiteral("P2");
-    p2.side = PinSide::Right;
-    p2.position = core::PointMm(1.0, 0.0);
-    p2.anchorPosition = core::PointMm(1.0, 0.0);
-
-    std::vector<ComponentParameter> params{
-        {QStringLiteral("resistance"), QStringLiteral("10000"), QStringLiteral("Ohm"), ParameterType::Real},
-        {QStringLiteral("tolerance"), QStringLiteral("1"), QStringLiteral("%"), ParameterType::Real},
-        {QStringLiteral("power"), QStringLiteral("0.125"), QStringLiteral("W"), ParameterType::Real},
-    };
-    return ComponentSnapshot(c, v, p, {p1, p2}, params);
-}
+// Bundled canonical example imported on first run so the catalog is usable
+// immediately; re-importing is idempotent (skipped once persisted).
+const QString kSeedResource = QStringLiteral(":/ardulab/examples/Resistor.schema-1.0.json");
 
 } // namespace
 
 struct ApplicationBootstrap::Impl
 {
-    // Construction order == dependency order; destruction is the reverse.
+    // Construction order == dependency order; destruction is the reverse, so
+    // the SQLite connection closes only after every consumer is gone.
     std::shared_ptr<core::EventBus> eventBus;
-    std::unique_ptr<components::InMemoryComponentCatalog> catalog;
+    std::unique_ptr<database::CatalogDatabase> catalogDb;
+    std::unique_ptr<database::SqliteComponentCatalog> catalog;
     std::unique_ptr<components::ComponentManager> componentManager;
+    std::unique_ptr<database::ComponentJsonImporter> importer;
     std::unique_ptr<project::ProjectService> projectService;
     std::unique_ptr<ui::MainWindow> window;
 };
@@ -96,28 +51,54 @@ int ApplicationBootstrap::start()
     // 1. Core
     impl.eventBus = core::EventBus::create();
 
-    // 2. Catalog boundary + Component Manager
-    impl.catalog = std::make_unique<components::InMemoryComponentCatalog>();
-    impl.componentManager = std::make_unique<components::ComponentManager>(*impl.catalog, impl.eventBus);
-    if (const auto seeded = impl.componentManager->registerSnapshot(canonicalResistorSeed()); !seeded) {
+    // 2. Per-user SQLite catalog: resolve path, open, migrate.
+    const auto dbFile = database::CatalogPaths::defaultDatabaseFile();
+    if (!dbFile) {
         QMessageBox::critical(nullptr, QStringLiteral("ArduLab startup"),
-                              QStringLiteral("Catalog seed failed: %1").arg(seeded.error().toString()));
+                              QStringLiteral("Catalog location error: %1").arg(dbFile.error().toString()));
+        return 2;
+    }
+    impl.catalogDb = std::make_unique<database::CatalogDatabase>(dbFile.value());
+    if (const auto opened = impl.catalogDb->open(); !opened) {
+        QMessageBox::critical(nullptr, QStringLiteral("ArduLab startup"),
+                              QStringLiteral("Could not open catalog: %1").arg(opened.error().toString()));
         return 2;
     }
 
-    // 3. Project Service
+    const database::SchemaMigrationRegistry registry = database::SchemaMigrationRegistry::foundation();
+    database::SchemaMigrator migrator(*impl.catalogDb, registry, QCoreApplication::applicationVersion());
+    if (const auto migrated = migrator.migrate(); !migrated) {
+        QMessageBox::critical(nullptr, QStringLiteral("ArduLab startup"),
+                              QStringLiteral("Catalog migration failed: %1").arg(migrated.error().toString()));
+        return 2;
+    }
+
+    // 3. Catalog boundary + Component Manager + JSON importer.
+    impl.catalog = std::make_unique<database::SqliteComponentCatalog>(*impl.catalogDb);
+    impl.componentManager = std::make_unique<components::ComponentManager>(*impl.catalog, impl.eventBus);
+    impl.importer = std::make_unique<database::ComponentJsonImporter>(*impl.componentManager);
+
+    // Seed the bundled canonical example through the real import pipeline
+    // (idempotent: skipped once it is already persisted).
+    if (const auto seeded = impl.importer->importFromFile(kSeedResource, components::CatalogScope::User); !seeded) {
+        // A seed failure is non-fatal; the app still runs with an empty catalog.
+        qWarning("ArduLab: could not seed example component: %s", qUtf8Printable(seeded.error().toString()));
+    }
+
+    // 4. Project Service
     impl.projectService = std::make_unique<project::ProjectService>(impl.componentManager.get(), impl.eventBus);
 
-    // 4. UI shell
+    // 5. UI shell
     ui::MainWindowDependencies deps;
     deps.eventBus = impl.eventBus;
     deps.projectService = impl.projectService.get();
     deps.componentManager = impl.componentManager.get();
+    deps.componentImporter = impl.importer.get();
     deps.applicationVersion = QCoreApplication::applicationVersion();
     impl.window = std::make_unique<ui::MainWindow>(std::move(deps));
     impl.window->show();
 
-    // 5. Default project so the A3 sheet is immediately usable.
+    // 6. Default project so the A3 sheet is immediately usable.
     if (const auto created = impl.projectService->createNew(QStringLiteral("Untitled Project")); !created) {
         impl.window->reportError(created.error());
     }

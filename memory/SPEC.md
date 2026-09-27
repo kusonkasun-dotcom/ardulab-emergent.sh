@@ -16,8 +16,52 @@ Authoritative documents (do not modify without approval):
 **Phase 1 (Clean Qt6/C++ foundation) — COMPLETE and building** (Linux/GCC verified in
 container; Windows/MSVC preset authored, not yet run by the user).
 
+**Phase 2 (SQLite catalog + migrations + canonical JSON import) — COMPLETE and building**
+(Linux/GCC verified in container: 11/11 Qt Test suites pass). Windows/MSVC **NOT VERIFIED**.
+
 Build/verify: `cd /app/ArduLab && cmake --preset linux-debug && cmake --build --preset linux-debug && ctest --preset linux-debug`
-Toolchain in container: cmake, ninja-build, qt6-base-dev 6.4.2, g++ 12 (installed via apt).
+Toolchain in container: cmake, ninja-build, qt6-base-dev 6.4.2 (incl. Qt6::Sql + libqsqlite),
+g++ 12 (installed via apt). Configure needs `-DCMAKE_PREFIX_PATH=/usr/lib/aarch64-linux-gnu/cmake`
+if a bare `cmake --preset` reconfigure cannot find Qt6.
+
+## Phase 2 catalog (database module)
+
+- Per-user SQLite catalog at `QStandardPaths::AppLocalDataLocation/catalog/ardulab_catalog.sqlite3`
+  (`%LOCALAPPDATA%\ArduLab\catalog\...` on Windows). `CatalogPaths` creates the dir; tests use
+  `":memory:"`, never the user path.
+- `CatalogDatabase` owns one uniquely-named Qt SQL connection, enables `foreign_keys`,
+  `busy_timeout`, WAL. `CatalogTransaction` is an RAII commit/rollback guard.
+- Migration framework: `SchemaMigration` (id/description/checksum/apply), `SchemaMigrationRegistry`
+  (ordered, rejects duplicate ids), `SchemaMigrator` (reads current version, refuses a catalog
+  newer than supported, applies pending in a transaction, records id/checksum/appversion/timestamp).
+- `Migration001InitialCatalog` (id=1) creates ALL foundation tables in one step —
+  `schema_migrations, catalog_metadata, categories, manufacturers, packages, components,
+  component_versions, pins, component_parameters` + indexes + FKs — and seeds the 9 system
+  categories. **Deviation:** the Plan Step 7 consolidates the ADR's design-level
+  Migration_001–006 into this single Migration 001; documented intentional consolidation.
+- `SqliteComponentCatalog` implements `IComponentCatalog` with prepared queries + a transactional
+  `store()`; exact `(scope, component, version)` resolution, metadata `search()` with filters,
+  `listVersions()` (newest first), `activeVersionOf()`. Row↔snapshot mapping preserves mm anchors.
+- JSON import: `ComponentJsonSchema` detects `schema_version`/`component_schema_version` (canonical
+  major 1 supported; unsupported major → VAL016). `ComponentJsonImporter` (implements
+  `IComponentImporter`) parses the flat canonical v1.0 shape (matches
+  `resources/examples/Resistor.schema-1.0.json`), runs structural validation (VAL003/005/006/007/
+  008/009/013/014/016), computes a deterministic SHA-256 content hash, imports as **DRAFT**, and
+  **skips + reports** an already-present `(scope, component, version)` (never overwrites). Stores
+  only through `ComponentManager.registerSnapshot`.
+- **Deviation (per user instruction "do not invent a legacy JSON format without a real example"):**
+  `LegacyComponentMapper` / legacy-schema import is DEFERRED — only the canonical v1.0 shape (the
+  one real example on disk) is imported. Re-introduce when a real legacy fixture is supplied.
+
+## Bootstrap / UI integration
+
+`ApplicationBootstrap` now: resolve catalog path → open `CatalogDatabase` → run `SchemaMigrator` →
+build `SqliteComponentCatalog` + `ComponentManager` + `ComponentJsonImporter` → seed the bundled
+`:/ardulab/examples/Resistor.schema-1.0.json` through the real import pipeline (idempotent skip on
+later runs) → build `MainWindow`. `MainWindow` gained a **Catalog ▸ Import Component…** action that
+forwards a file path to `IComponentImporter` (no JSON/SQL logic in the UI) and shows the report.
+The catalog browser + placement workflow are unchanged (they already go through `IComponentManager`).
+
 
 ## Module layout (static libs; dependency direction enforced by linker)
 
@@ -29,6 +73,10 @@ src/components  Component, ComponentVersion, Package, Pin, PinAnchor, ComponentS
 src/project     Project, ProjectMetadata, FalDocument, FalSerializer, ProjectService
 src/canvas      CoordinateSystem, ViewportController, A3CanvasScene, A3CanvasView
 src/connection  CatalogPinRef, ConnectionPoint, Wire, Net (DECLARATIONS ONLY) + README.md
+src/database    CatalogPaths, CatalogDatabase, CatalogTransaction, SchemaMigration,
+                SchemaMigrationRegistry, SchemaMigrator, migrations/Migration001InitialCatalog,
+                SqliteComponentCatalog (implements IComponentCatalog),
+                import/{ComponentJsonDocument, ComponentJsonSchema, ComponentJsonImporter}
 src/ui          MainWindow (thin), ComponentGraphicsItem (renderer adapter)
 src/app         ApplicationBootstrap (composition root); src/main.cpp
 tests/          8 Qt Test suites; fixtures in tests/fixtures
@@ -51,21 +99,25 @@ resources/      ardulab.qrc, categories.v1.json, LegacyEmptyProject.FAL, Resisto
 - `EventBus::publishEvent<T>()` (not `emit` — Qt macro clash). Subscriptions are RAII tokens.
 - Events: ProjectOpened/Saved/Closed, ComponentRegistered.
 
-## Runtime (Phase 1)
+## Runtime
 
-Bootstrap seeds one in-memory component `R1-A-0805-10K@1.0.0` (USER/DRAFT) and opens
-"Untitled Project". UI: File New/Open/Save/SaveAs/Close, View Zoom/Fit/Grid, Catalog
-Refresh/Place (Insert key or double-click). Placing records the exact version + content
-hash + fallback snapshot in the project instance.
+Bootstrap opens the per-user SQLite catalog, runs Migration 001, and seeds `R1-A-0805-10K@1.0.0`
+(USER/DRAFT) via the JSON import pipeline (idempotent), then opens "Untitled Project". UI:
+File New/Open/Save/SaveAs/Close, View Zoom/Fit/Grid, Catalog Refresh/Import/Place (Insert key or
+double-click). Placing records the exact version + content hash + fallback snapshot in the project
+instance. `InMemoryComponentCatalog` remains as a test double only (no longer the production catalog).
 
-## Not implemented (out of Phase 1 scope)
+## Not implemented (out of current scope)
 
-SQLite catalog & migrations, JSON importer/legacy mapper, Schematic, Simulation, PCB,
-Manufacturing, Firmware, AI. `Qt6::Sql` is not linked anywhere.
+Legacy-JSON mapper (deferred — no real legacy example on disk), datasheets/footprints/footprint_pads/
+simulation_models/symbols tables, lifecycle activation beyond DRAFT, JSON export, backup/restore,
+Schematic, Simulation, PCB, Manufacturing, Firmware, AI.
 
-## Next phase (needs user approval)
+## Possible next steps (need approval)
 
-Phase 2 per Implementation Plan Steps 5–10: CatalogPaths, CatalogDatabase, CatalogTransaction,
-SchemaMigration(+Registry/Migrator), Migration001InitialCatalog, SqliteComponentCatalog,
-ComponentJsonSchema/LegacyComponentMapper/ComponentJsonImporter. Replace
-InMemoryComponentCatalog in ApplicationBootstrap with SqliteComponentCatalog.
+- Post-Phase-2 MVP polish flagged by the user: cursor snap readout (grid-snapped mm + nearest pin
+  anchor in the status bar), undo/redo, and hardened `.FAL` snapshot persistence.
+- Downstream catalog tables (datasheets/footprints/symbols/simulation models) + their migrations.
+- Legacy JSON import once a real legacy fixture is supplied.
+- Windows/MSVC build verification (preset authored; NOT VERIFIED on Linux).
+

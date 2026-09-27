@@ -43,3 +43,8 @@ ardulab_add_test(FoundationSmokeTests   app/FoundationSmokeTests.cpp       ardul
 target_compile_definitions(FoundationSmokeTests PRIVATE
     ARDULAB_SMOKE_OUTPUT_DIR="${CMAKE_BINARY_DIR}/smoke"
 )
+
+# Milestone 7: Phase 2 SQLite catalog + JSON import (temporary in-memory DBs)
+ardulab_add_test(CatalogDatabaseTests      database/CatalogDatabaseTests.cpp      ardulab_database)
+ardulab_add_test(SchemaMigratorTests       database/SchemaMigratorTests.cpp       ardulab_database)
+ardulab_add_test(ComponentJsonImporterTests database/ComponentJsonImporterTests.cpp ardulab_database)

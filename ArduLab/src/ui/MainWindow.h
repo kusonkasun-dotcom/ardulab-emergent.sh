@@ -11,6 +11,7 @@
 #include "canvas/A3CanvasScene.h"
 #include "canvas/A3CanvasView.h"
 #include "canvas/ViewportController.h"
+#include "components/IComponentImporter.h"
 #include "components/IComponentManager.h"
 #include "core/EventBus.h"
 #include "project/ProjectService.h"
@@ -34,6 +35,7 @@ struct MainWindowDependencies final
     std::shared_ptr<core::EventBus> eventBus;
     project::ProjectService* projectService = nullptr;      ///< Owned by bootstrap.
     components::IComponentManager* componentManager = nullptr; ///< Owned by bootstrap.
+    components::IComponentImporter* componentImporter = nullptr; ///< Owned by bootstrap; may be null.
     QString applicationVersion;
 };
 
@@ -59,6 +61,7 @@ private slots:
     void onFitSheet();
     void onToggleGrid(bool checked);
     void onRefreshCatalog();
+    void onImportComponent();
     void onPlaceSelectedComponent();
     void onCursorMoved(double xMm, double yMm);
     void onZoomChanged(double zoom);

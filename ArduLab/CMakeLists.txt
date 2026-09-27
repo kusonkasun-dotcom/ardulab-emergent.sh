@@ -30,7 +30,7 @@ include(ArduLabWarnings)
 # --------------------------------------------------------------------------
 # Qt6 (Plan §11: Core, Gui, Widgets; Sql is deferred to the database phase)
 # --------------------------------------------------------------------------
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql)
 if(ARDULAB_BUILD_TESTS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
 endif()
@@ -80,6 +80,8 @@ add_library(ardulab_components STATIC
     ${ARDULAB_SRC}/components/ComponentSearchCriteria.h
     ${ARDULAB_SRC}/components/IComponentCatalog.h
     ${ARDULAB_SRC}/components/IComponentManager.h
+    ${ARDULAB_SRC}/components/IComponentImporter.h
+    ${ARDULAB_SRC}/components/ImportReport.h
     ${ARDULAB_SRC}/components/ComponentManager.h
     ${ARDULAB_SRC}/components/ComponentManager.cpp
     ${ARDULAB_SRC}/components/InMemoryComponentCatalog.h
@@ -141,6 +143,34 @@ add_library(ardulab_ui STATIC
 target_link_libraries(ardulab_ui PUBLIC ardulab_canvas ardulab_components ardulab_project Qt6::Widgets)
 ardulab_apply_warnings(ardulab_ui)
 
+# ---- database (Milestone 7: Phase 2 SQLite catalog + JSON import) --------
+# SQLite catalog adapter, migration framework, and JSON importer. Depends on
+# core + components (domain) + Qt Sql. Implements IComponentCatalog and
+# IComponentImporter; the UI never links this module (it uses the interfaces).
+add_library(ardulab_database STATIC
+    ${ARDULAB_SRC}/database/CatalogPaths.h
+    ${ARDULAB_SRC}/database/CatalogPaths.cpp
+    ${ARDULAB_SRC}/database/CatalogDatabase.h
+    ${ARDULAB_SRC}/database/CatalogDatabase.cpp
+    ${ARDULAB_SRC}/database/CatalogTransaction.h
+    ${ARDULAB_SRC}/database/SchemaMigration.h
+    ${ARDULAB_SRC}/database/SchemaMigrationRegistry.h
+    ${ARDULAB_SRC}/database/SchemaMigrationRegistry.cpp
+    ${ARDULAB_SRC}/database/SchemaMigrator.h
+    ${ARDULAB_SRC}/database/SchemaMigrator.cpp
+    ${ARDULAB_SRC}/database/SqliteComponentCatalog.h
+    ${ARDULAB_SRC}/database/SqliteComponentCatalog.cpp
+    ${ARDULAB_SRC}/database/migrations/Migration001InitialCatalog.h
+    ${ARDULAB_SRC}/database/migrations/Migration001InitialCatalog.cpp
+    ${ARDULAB_SRC}/database/import/ComponentJsonDocument.h
+    ${ARDULAB_SRC}/database/import/ComponentJsonSchema.h
+    ${ARDULAB_SRC}/database/import/ComponentJsonSchema.cpp
+    ${ARDULAB_SRC}/database/import/ComponentJsonImporter.h
+    ${ARDULAB_SRC}/database/import/ComponentJsonImporter.cpp
+)
+target_link_libraries(ardulab_database PUBLIC ardulab_core ardulab_components Qt6::Core Qt6::Sql)
+ardulab_apply_warnings(ardulab_database)
+
 # ==== MODULE TARGETS END ====
 
 # --------------------------------------------------------------------------
@@ -162,7 +192,7 @@ set_target_properties(ArduLab PROPERTIES
 ardulab_apply_warnings(ArduLab)
 
 # ==== APP MODULE LINKS BEGIN ====
-target_link_libraries(ArduLab PRIVATE ardulab_core ardulab_components ardulab_project ardulab_canvas ardulab_ui)
+target_link_libraries(ArduLab PRIVATE ardulab_core ardulab_components ardulab_project ardulab_canvas ardulab_ui ardulab_database)
 # ==== APP MODULE LINKS END ====
 
 # --------------------------------------------------------------------------
