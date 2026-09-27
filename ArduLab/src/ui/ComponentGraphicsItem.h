@@ -37,6 +37,10 @@ public:
     void setPositionMm(core::PointMm positionMm);
     [[nodiscard]] core::PointMm positionMm() const;
 
+    /// Rotation about the package origin, in degrees (clockwise, +Y down).
+    void setRotationDegrees(double degrees);
+    [[nodiscard]] double rotationDegrees() const { return rotation(); }
+
     /// Scene position of a pin anchor (for future Connection Core / UI hit-testing).
     [[nodiscard]] QPointF anchorScenePos(const components::PinAnchor& anchor) const;
 

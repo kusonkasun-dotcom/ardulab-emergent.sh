@@ -31,6 +31,7 @@ ardulab_add_test(PinAnchorTests        components/PinAnchorTests.cpp        ardu
 
 # Milestone 4: Project System / .FAL compatibility
 ardulab_add_test(FalCompatibilityTests project/FalCompatibilityTests.cpp    ardulab_project)
+ardulab_add_test(ProjectRoundtripTests project/ProjectRoundtripTests.cpp    ardulab_project)
 
 # Milestone 5: Canvas Engine (offscreen QPA, no project/components linkage)
 ardulab_add_test(CoordinateSystemTests canvas/CoordinateSystemTests.cpp     ardulab_canvas)
@@ -48,3 +49,10 @@ target_compile_definitions(FoundationSmokeTests PRIVATE
 ardulab_add_test(CatalogDatabaseTests      database/CatalogDatabaseTests.cpp      ardulab_database)
 ardulab_add_test(SchemaMigratorTests       database/SchemaMigratorTests.cpp       ardulab_database)
 ardulab_add_test(ComponentJsonImporterTests database/ComponentJsonImporterTests.cpp ardulab_database)
+
+# MVP completion: interactive editing (undo/redo) + cursor snap readout.
+# Both drive the real MainWindow headlessly (offscreen QPA).
+ardulab_add_test(EditUndoRedoTests       ui/EditUndoRedoTests.cpp       ardulab_ui)
+ardulab_add_test(CursorSnapReadoutTests  ui/CursorSnapReadoutTests.cpp  ardulab_ui)
+target_include_directories(EditUndoRedoTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(CursorSnapReadoutTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

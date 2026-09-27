@@ -29,8 +29,15 @@ ComponentGraphicsItem::ComponentGraphicsItem(components::ComponentSnapshotPtr sn
     , m_coordinates(coordinates)
 {
     setFlag(QGraphicsItem::ItemIsSelectable, true);
-    setFlag(QGraphicsItem::ItemIsMovable, false); // editing is a Schematic Engine concern
+    setFlag(QGraphicsItem::ItemIsMovable, true);          // interactive placement move (geometric only)
+    setFlag(QGraphicsItem::ItemSendsGeometryChanges, true);
     setToolTip(m_snapshot->component().name + QStringLiteral("\n") + m_snapshot->version().versionId.value());
+}
+
+void ComponentGraphicsItem::setRotationDegrees(double degrees)
+{
+    // Rotate about the package origin (item (0,0)), so pin anchors rotate with the body.
+    setRotation(degrees);
 }
 
 void ComponentGraphicsItem::setPositionMm(core::PointMm positionMm)

@@ -27,6 +27,28 @@ bool Project::addInstance(ComponentInstance instance)
     return true;
 }
 
+ComponentInstance* Project::findInstanceMutable(const core::InstanceId& id) noexcept
+{
+    for (ComponentInstance& instance : m_instances) {
+        if (instance.instanceId == id) {
+            return &instance;
+        }
+    }
+    return nullptr;
+}
+
+bool Project::removeInstance(const core::InstanceId& id)
+{
+    for (auto it = m_instances.begin(); it != m_instances.end(); ++it) {
+        if (it->instanceId == id) {
+            m_instances.erase(it);
+            m_dirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
 std::size_t Project::unresolvedReferenceCount() const noexcept
 {
     std::size_t count = 0;

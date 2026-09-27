@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDockWidget>
+#include <QEvent>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QKeySequence>
@@ -13,9 +14,15 @@
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QUndoCommand>
+#include <QUndoStack>
 #include <QVBoxLayout>
+
+#include <algorithm>
+#include <cmath>
 
 namespace ardulab::ui {
 
@@ -24,6 +31,134 @@ const QString kFalFilter = QStringLiteral("ArduLab Project (*.FAL *.fal);;All fi
 constexpr int kRoleComponentId = Qt::UserRole + 1;
 constexpr int kRoleVersionId = Qt::UserRole + 2;
 constexpr int kRoleScope = Qt::UserRole + 3;
+constexpr double kAnchorTolerancePx = 12.0; ///< Screen-pixel snap tolerance for the anchor readout.
+
+// ---- Undo commands: each drives MainWindow's model+scene primitives so a
+//      single user gesture is exactly one reversible step. ------------------
+
+class PlaceInstanceCommand final : public QUndoCommand
+{
+public:
+    PlaceInstanceCommand(MainWindow* w, project::ComponentInstance instance)
+        : m_window(w), m_instance(std::move(instance))
+    {
+        setText(QStringLiteral("Place %1").arg(m_instance.instanceId.value()));
+    }
+    void redo() override { m_window->placeInstance(m_instance); }
+    void undo() override { m_window->removeInstanceById(m_instance.instanceId); }
+
+private:
+    MainWindow* m_window;
+    project::ComponentInstance m_instance;
+};
+
+class DeleteInstanceCommand final : public QUndoCommand
+{
+public:
+    DeleteInstanceCommand(MainWindow* w, project::ComponentInstance instance)
+        : m_window(w), m_instance(std::move(instance))
+    {
+        setText(QStringLiteral("Delete %1").arg(m_instance.instanceId.value()));
+    }
+    void redo() override { m_window->removeInstanceById(m_instance.instanceId); }
+    void undo() override { m_window->placeInstance(m_instance); }
+
+private:
+    MainWindow* m_window;
+    project::ComponentInstance m_instance;
+};
+
+class MoveInstanceCommand final : public QUndoCommand
+{
+public:
+    MoveInstanceCommand(MainWindow* w, core::InstanceId id, core::PointMm oldPos, core::PointMm newPos)
+        : m_window(w), m_id(std::move(id)), m_old(oldPos), m_new(newPos)
+    {
+        setText(QStringLiteral("Move %1").arg(m_id.value()));
+    }
+    void redo() override { m_window->moveInstanceTo(m_id, m_new); }
+    void undo() override { m_window->moveInstanceTo(m_id, m_old); }
+
+private:
+    MainWindow* m_window;
+    core::InstanceId m_id;
+    core::PointMm m_old;
+    core::PointMm m_new;
+};
+
+class RotateInstanceCommand final : public QUndoCommand
+{
+public:
+    RotateInstanceCommand(MainWindow* w, core::InstanceId id, double oldDeg, double newDeg)
+        : m_window(w), m_id(std::move(id)), m_old(oldDeg), m_new(newDeg)
+    {
+        setText(QStringLiteral("Rotate %1").arg(m_id.value()));
+    }
+    void redo() override { m_window->rotateInstanceTo(m_id, m_new); }
+    void undo() override { m_window->rotateInstanceTo(m_id, m_old); }
+
+private:
+    MainWindow* m_window;
+    core::InstanceId m_id;
+    double m_old;
+    double m_new;
+};
+
+class RenameInstanceCommand final : public QUndoCommand
+{
+public:
+    RenameInstanceCommand(MainWindow* w, core::InstanceId id, QString oldName, QString newName)
+        : m_window(w), m_id(std::move(id)), m_old(std::move(oldName)), m_new(std::move(newName))
+    {
+        setText(QStringLiteral("Rename %1").arg(m_id.value()));
+    }
+    void redo() override { m_window->renameInstanceTo(m_id, m_new); }
+    void undo() override { m_window->renameInstanceTo(m_id, m_old); }
+
+private:
+    MainWindow* m_window;
+    core::InstanceId m_id;
+    QString m_old;
+    QString m_new;
+};
+
+class ChangeValueCommand final : public QUndoCommand
+{
+public:
+    ChangeValueCommand(MainWindow* w, core::InstanceId id, QString oldValue, QString newValue)
+        : m_window(w), m_id(std::move(id)), m_old(std::move(oldValue)), m_new(std::move(newValue))
+    {
+        setText(QStringLiteral("Change value of %1").arg(m_id.value()));
+    }
+    void redo() override { m_window->setInstanceValueTo(m_id, m_new); }
+    void undo() override { m_window->setInstanceValueTo(m_id, m_old); }
+
+private:
+    MainWindow* m_window;
+    core::InstanceId m_id;
+    QString m_old;
+    QString m_new;
+};
+
+/// Reference designator change ("R1" → "R7"). Distinct from a display-name
+/// rename: the designator is the instance identity recorded in the .FAL file.
+class ChangeReferenceCommand final : public QUndoCommand
+{
+public:
+    ChangeReferenceCommand(MainWindow* w, core::InstanceId oldId, core::InstanceId newId)
+        : m_window(w), m_old(std::move(oldId)), m_new(std::move(newId))
+    {
+        setText(QStringLiteral("Reference %1 → %2").arg(m_old.value(), m_new.value()));
+    }
+    void redo() override { m_window->setInstanceReferenceTo(m_old, m_new); }
+    void undo() override { m_window->setInstanceReferenceTo(m_new, m_old); }
+
+private:
+    MainWindow* m_window;
+    core::InstanceId m_old;
+    core::InstanceId m_new;
+};
+
 } // namespace
 
 MainWindow::MainWindow(MainWindowDependencies deps, QWidget* parent)
@@ -38,6 +173,8 @@ MainWindow::MainWindow(MainWindowDependencies deps, QWidget* parent)
     m_view = new canvas::A3CanvasView(m_scene, m_viewport, this);
     setCentralWidget(m_view);
 
+    m_undoStack = new QUndoStack(this);
+
     buildMenus();
     buildDocks();
     buildStatusBar();
@@ -45,13 +182,53 @@ MainWindow::MainWindow(MainWindowDependencies deps, QWidget* parent)
 
     connect(m_view, &canvas::A3CanvasView::cursorMovedMm, this, &MainWindow::onCursorMoved);
     connect(m_viewport, &canvas::ViewportController::zoomChanged, this, &MainWindow::onZoomChanged);
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &MainWindow::updateActionStates);
+
+    // Dirty state follows the undo stack: clean index ⇔ saved project.
+    connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool clean) {
+        if (project::Project* p = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+            if (clean) {
+                p->markClean();
+            } else {
+                p->markDirty();
+            }
+        }
+        updateWindowTitle();
+    });
+
+    // Drag detection + snap readout live on the viewport's event stream so the
+    // canvas module stays free of catalog/UI types.
+    m_view->viewport()->installEventFilter(this);
 
     onRefreshCatalog();
     updateWindowTitle();
     updateActionStates();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    // Tear down in a deterministic order: child widgets (scene, undo stack,
+    // viewport) are destroyed by QObject *after* this body runs, and their
+    // signals must not reach a half-destroyed MainWindow.
+    m_subscriptions.clear();
+    if (m_view != nullptr && m_view->viewport() != nullptr) {
+        m_view->viewport()->removeEventFilter(this);
+    }
+    if (m_scene != nullptr) {
+        disconnect(m_scene, nullptr, this, nullptr);
+    }
+    if (m_undoStack != nullptr) {
+        disconnect(m_undoStack, nullptr, this, nullptr);
+        m_undoStack->clear();
+    }
+    if (m_viewport != nullptr) {
+        disconnect(m_viewport, nullptr, this, nullptr);
+    }
+    if (m_view != nullptr) {
+        disconnect(m_view, nullptr, this, nullptr);
+    }
+    clearSceneItems();
+}
 
 // ---------------------------------------------------------------------------
 // Composition
@@ -69,6 +246,28 @@ void MainWindow::buildMenus()
     m_actClose = fileMenu->addAction(tr("&Close Project"), QKeySequence::Close, this, &MainWindow::onCloseProject);
     fileMenu->addSeparator();
     fileMenu->addAction(tr("E&xit"), QKeySequence::Quit, qApp, &QApplication::closeAllWindows);
+
+    QMenu* editMenu = menuBar()->addMenu(tr("&Edit"));
+    QAction* actUndo = m_undoStack->createUndoAction(this, tr("&Undo"));
+    actUndo->setShortcut(QKeySequence::Undo);
+    actUndo->setObjectName(QStringLiteral("EditUndoAction"));
+    QAction* actRedo = m_undoStack->createRedoAction(this, tr("&Redo"));
+    actRedo->setShortcut(QKeySequence::Redo);
+    actRedo->setObjectName(QStringLiteral("EditRedoAction"));
+    editMenu->addAction(actUndo);
+    editMenu->addAction(actRedo);
+    editMenu->addSeparator();
+    m_actRotate = editMenu->addAction(tr("Rotate &90°"), QKeySequence(Qt::Key_R), this, &MainWindow::onRotateSelected);
+    m_actRotate->setObjectName(QStringLiteral("EditRotateAction"));
+    m_actDelete = editMenu->addAction(tr("&Delete"), QKeySequence::Delete, this, &MainWindow::onDeleteSelected);
+    m_actDelete->setObjectName(QStringLiteral("EditDeleteAction"));
+    m_actRename = editMenu->addAction(tr("Re&name Instance…"), QKeySequence(Qt::Key_F2), this,
+                                      &MainWindow::onRenameSelected);
+    m_actRename->setObjectName(QStringLiteral("EditRenameAction"));
+    m_actValue = editMenu->addAction(tr("Change &Value…"), this, &MainWindow::onChangeValueSelected);
+    m_actValue->setObjectName(QStringLiteral("EditValueAction"));
+    m_actReference = editMenu->addAction(tr("Change Re&ference…"), this, &MainWindow::onChangeReferenceSelected);
+    m_actReference->setObjectName(QStringLiteral("EditReferenceAction"));
 
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->addAction(tr("Zoom &In"), QKeySequence::ZoomIn, m_viewport, [this] { m_viewport->zoomBy(1); });
@@ -92,7 +291,7 @@ void MainWindow::buildMenus()
     helpMenu->addAction(tr("&About ArduLab"), this, [this] {
         QMessageBox::about(this, tr("About ArduLab"),
                            tr("<b>ArduLab %1</b><br/>Offline-first Electronic Engineering Platform.<br/>"
-                              "Clean foundation: Core · Project · A3 Canvas · Component Engine.")
+                              "Clean foundation: Core · Project · A3 Canvas · Component Engine · SQLite Catalog.")
                                .arg(m_deps.applicationVersion));
     });
 
@@ -103,7 +302,12 @@ void MainWindow::buildMenus()
     toolbar->addAction(actOpen);
     toolbar->addAction(m_actSave);
     toolbar->addSeparator();
+    toolbar->addAction(actUndo);
+    toolbar->addAction(actRedo);
+    toolbar->addSeparator();
     toolbar->addAction(m_actPlace);
+    toolbar->addAction(m_actRotate);
+    toolbar->addAction(m_actDelete);
 }
 
 void MainWindow::buildDocks()
@@ -125,12 +329,23 @@ void MainWindow::buildDocks()
 void MainWindow::buildStatusBar()
 {
     m_statusCursor = new QLabel(tr("X: —  Y: —"), this);
-    m_statusCursor->setMinimumWidth(180);
+    m_statusCursor->setObjectName(QStringLiteral("StatusCursor"));
+    m_statusCursor->setMinimumWidth(170);
+    m_statusSnap = new QLabel(tr("Snap: —"), this);
+    m_statusSnap->setObjectName(QStringLiteral("StatusSnap"));
+    m_statusSnap->setMinimumWidth(170);
+    m_statusAnchor = new QLabel(tr("Pin: —"), this);
+    m_statusAnchor->setObjectName(QStringLiteral("StatusAnchor"));
+    m_statusAnchor->setMinimumWidth(220);
     m_statusZoom = new QLabel(tr("Zoom: 100%"), this);
-    m_statusZoom->setMinimumWidth(100);
+    m_statusZoom->setObjectName(QStringLiteral("StatusZoom"));
+    m_statusZoom->setMinimumWidth(90);
     m_statusCatalog = new QLabel(this);
+    m_statusCatalog->setObjectName(QStringLiteral("StatusCatalog"));
     statusBar()->addPermanentWidget(m_statusCatalog);
     statusBar()->addPermanentWidget(m_statusZoom);
+    statusBar()->addPermanentWidget(m_statusAnchor);
+    statusBar()->addPermanentWidget(m_statusSnap);
     statusBar()->addPermanentWidget(m_statusCursor);
     statusBar()->showMessage(tr("Ready"), 3000);
 }
@@ -141,15 +356,18 @@ void MainWindow::subscribeToEvents()
         return;
     }
     m_subscriptions.push_back(m_deps.eventBus->subscribe<project::ProjectOpenedEvent>([this](const project::ProjectOpenedEvent&) {
+        m_undoStack->clear();
         rebuildSceneFromProject();
         updateWindowTitle();
         updateActionStates();
     }));
     m_subscriptions.push_back(m_deps.eventBus->subscribe<project::ProjectSavedEvent>([this](const project::ProjectSavedEvent& e) {
+        m_undoStack->setClean();
         statusBar()->showMessage(tr("Saved %1").arg(e.filePath), 4000);
         updateWindowTitle();
     }));
     m_subscriptions.push_back(m_deps.eventBus->subscribe<project::ProjectClosedEvent>([this](const project::ProjectClosedEvent&) {
+        m_undoStack->clear();
         clearSceneItems();
         updateWindowTitle();
         updateActionStates();
@@ -200,7 +418,8 @@ void MainWindow::onOpenProject()
     if (path.isEmpty()) {
         return;
     }
-    m_deps.projectService->close();
+    // No pre-close: ProjectService::open is transactional, so a corrupt file
+    // fails without discarding the document currently on screen.
     const auto r = m_deps.projectService->open(path);
     if (!r) {
         reportError(r.error());
@@ -363,15 +582,22 @@ void MainWindow::onPlaceSelectedComponent()
         return;
     }
 
-    project::ComponentInstance instance;
     const QString prefix = snapshot.value()->component().categoryId.value() == QLatin1String("PASSIVE")
         ? QStringLiteral("R") : QStringLiteral("U");
-    instance.instanceId = core::InstanceId(prefix + QString::number(proj->instances().size() + 1));
+    // Generate a unique instance id (deletes can leave gaps).
+    int n = static_cast<int>(proj->instances().size()) + 1;
+    core::InstanceId instanceId(prefix + QString::number(n));
+    while (proj->findInstance(instanceId) != nullptr) {
+        ++n;
+        instanceId = core::InstanceId(prefix + QString::number(n));
+    }
+
+    project::ComponentInstance instance;
+    instance.instanceId = instanceId;
     instance.libraryId = componentId.value();
     instance.displayName = snapshot.value()->component().name;
-    // Default placement: sheet centre + offset per instance, snapped to 1 mm grid.
     const double offset = 15.0 * static_cast<double>(proj->instances().size());
-    instance.position = canvas::CoordinateSystem::snapToGrid(core::PointMm(210.0 + offset, 148.5 + offset), 1.0);
+    instance.position = canvas::CoordinateSystem::snapToGrid(core::PointMm(210.0 + offset, 148.5 + offset), gridMm());
     project::CatalogReference ref;
     ref.scope = scope;
     ref.componentId = componentId;
@@ -388,23 +614,270 @@ void MainWindow::onPlaceSelectedComponent()
     instance.catalogReference = std::move(ref);
     instance.referenceState = project::ReferenceState::Resolved;
 
-    if (!proj->addInstance(instance)) {
-        reportError(core::Error(core::ErrorCode::AlreadyExists, tr("instance id already exists"), instance.instanceId.value()));
+    m_undoStack->push(new PlaceInstanceCommand(this, std::move(instance)));
+    statusBar()->showMessage(tr("Placed %1 (%2)").arg(instanceId.value(), versionId.value()), 3000);
+}
+
+void MainWindow::onRotateSelected()
+{
+    ComponentGraphicsItem* item = selectedComponentItem();
+    if (item == nullptr || m_deps.projectService == nullptr) {
         return;
     }
+    project::Project* proj = m_deps.projectService->currentProject();
+    const project::ComponentInstance* inst = proj ? proj->findInstance(item->instanceId()) : nullptr;
+    if (inst == nullptr) {
+        return;
+    }
+    const double next = std::fmod(inst->rotationDegrees + 90.0, 360.0);
+    m_undoStack->push(new RotateInstanceCommand(this, item->instanceId(), inst->rotationDegrees, next));
+}
 
-    auto* gfx = new ComponentGraphicsItem(snapshot.value(), instance.instanceId, m_scene->coordinateSystem());
-    gfx->setPositionMm(instance.position);
-    m_scene->addItem(gfx);
-    m_items.push_back(gfx);
+void MainWindow::onDeleteSelected()
+{
+    ComponentGraphicsItem* item = selectedComponentItem();
+    if (item == nullptr || m_deps.projectService == nullptr) {
+        return;
+    }
+    project::Project* proj = m_deps.projectService->currentProject();
+    const project::ComponentInstance* inst = proj ? proj->findInstance(item->instanceId()) : nullptr;
+    if (inst == nullptr) {
+        return;
+    }
+    m_undoStack->push(new DeleteInstanceCommand(this, *inst)); // copy keeps full state for undo
+}
+
+void MainWindow::onRenameSelected()
+{
+    ComponentGraphicsItem* item = selectedComponentItem();
+    if (item == nullptr || m_deps.projectService == nullptr) {
+        return;
+    }
+    project::Project* proj = m_deps.projectService->currentProject();
+    const project::ComponentInstance* inst = proj ? proj->findInstance(item->instanceId()) : nullptr;
+    if (inst == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("Rename Instance"), tr("Display name:"), QLineEdit::Normal,
+                                               inst->displayName, &ok);
+    if (!ok || name == inst->displayName) {
+        return;
+    }
+    m_undoStack->push(new RenameInstanceCommand(this, item->instanceId(), inst->displayName, name));
+}
+
+void MainWindow::onChangeValueSelected()
+{
+    ComponentGraphicsItem* item = selectedComponentItem();
+    if (item == nullptr || m_deps.projectService == nullptr) {
+        return;
+    }
+    project::Project* proj = m_deps.projectService->currentProject();
+    const project::ComponentInstance* inst = proj ? proj->findInstance(item->instanceId()) : nullptr;
+    if (inst == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString value = QInputDialog::getText(this, tr("Change Value"), tr("Value:"), QLineEdit::Normal,
+                                                inst->value, &ok);
+    if (!ok) {
+        return;
+    }
+    changeInstanceValue(item->instanceId(), value);
+}
+
+void MainWindow::changeInstanceValue(const core::InstanceId& id, const QString& value)
+{
+    project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr;
+    const project::ComponentInstance* inst = proj ? proj->findInstance(id) : nullptr;
+    if (inst == nullptr || inst->value == value) {
+        return;
+    }
+    m_undoStack->push(new ChangeValueCommand(this, id, inst->value, value));
+}
+
+void MainWindow::changeInstanceReference(const core::InstanceId& from, const core::InstanceId& to)
+{
+    project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr;
+    if (proj == nullptr || !to.isValid() || to == from || proj->findInstance(from) == nullptr) {
+        return;
+    }
+    if (proj->findInstance(to) != nullptr) {
+        statusBar()->showMessage(tr("Reference %1 is already used").arg(to.value()), 4000);
+        return;
+    }
+    m_undoStack->push(new ChangeReferenceCommand(this, from, to));
+}
+
+void MainWindow::onChangeReferenceSelected()
+{
+    ComponentGraphicsItem* item = selectedComponentItem();
+    if (item == nullptr || m_deps.projectService == nullptr) {
+        return;
+    }
+    project::Project* proj = m_deps.projectService->currentProject();
+    const core::InstanceId current = item->instanceId();
+    if (proj == nullptr || proj->findInstance(current) == nullptr) {
+        return;
+    }
+    bool ok = false;
+    const QString text = QInputDialog::getText(this, tr("Change Reference"), tr("Reference designator:"),
+                                               QLineEdit::Normal, current.value(), &ok);
+    if (!ok) {
+        return;
+    }
+    changeInstanceReference(current, core::InstanceId(text.trimmed()));
+}
+
+// ---------------------------------------------------------------------------
+// Edit primitives (model + scene) — called only by undo commands
+// ---------------------------------------------------------------------------
+
+void MainWindow::placeInstance(const project::ComponentInstance& instance)
+{
+    project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr;
+    if (proj == nullptr) {
+        return;
+    }
+    if (!proj->addInstance(instance)) {
+        return; // duplicate id — should not happen through the command path
+    }
+    renderInstance(instance);
     updateWindowTitle();
     updateActionStates();
-    statusBar()->showMessage(tr("Placed %1 (%2)").arg(instance.instanceId.value(), versionId.value()), 3000);
+}
+
+void MainWindow::removeInstanceById(const core::InstanceId& id)
+{
+    if (ComponentGraphicsItem* item = itemFor(id)) {
+        m_scene->removeItem(item);
+        m_items.erase(std::remove(m_items.begin(), m_items.end(), item), m_items.end());
+        delete item;
+    }
+    if (project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+        (void)proj->removeInstance(id);
+    }
+    updateWindowTitle();
+    updateActionStates();
+}
+
+void MainWindow::moveInstanceTo(const core::InstanceId& id, core::PointMm positionMm)
+{
+    if (project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+        if (project::ComponentInstance* inst = proj->findInstanceMutable(id)) {
+            inst->position = positionMm;
+        }
+    }
+    if (ComponentGraphicsItem* item = itemFor(id)) {
+        item->setPositionMm(positionMm);
+    }
+}
+
+void MainWindow::rotateInstanceTo(const core::InstanceId& id, double degrees)
+{
+    if (project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+        if (project::ComponentInstance* inst = proj->findInstanceMutable(id)) {
+            inst->rotationDegrees = degrees;
+        }
+    }
+    if (ComponentGraphicsItem* item = itemFor(id)) {
+        item->setRotationDegrees(degrees);
+    }
+}
+
+void MainWindow::renameInstanceTo(const core::InstanceId& id, const QString& name)
+{
+    if (project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+        if (project::ComponentInstance* inst = proj->findInstanceMutable(id)) {
+            inst->displayName = name;
+        }
+    }
+    if (ComponentGraphicsItem* item = itemFor(id)) {
+        item->setToolTip(name);
+        item->update();
+    }
+    statusBar()->showMessage(tr("Renamed %1 → %2").arg(id.value(), name), 3000);
+}
+
+void MainWindow::setInstanceValueTo(const core::InstanceId& id, const QString& value)
+{
+    if (project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr) {
+        if (project::ComponentInstance* inst = proj->findInstanceMutable(id)) {
+            inst->value = value;
+            if (ComponentGraphicsItem* item = itemFor(id)) {
+                item->setToolTip(inst->displayName + (value.isEmpty() ? QString() : QStringLiteral("\n") + value));
+                item->update();
+            }
+        }
+    }
+}
+
+void MainWindow::setInstanceReferenceTo(const core::InstanceId& from, const core::InstanceId& to)
+{
+    project::Project* proj = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr;
+    if (proj == nullptr || proj->findInstance(from) == nullptr || proj->findInstance(to) != nullptr) {
+        return;
+    }
+    project::ComponentInstance* inst = proj->findInstanceMutable(from);
+    inst->instanceId = to;
+
+    // The item caches the designator for its label, so it is re-created from
+    // the updated instance (selection is restored).
+    const bool wasSelected = itemFor(from) != nullptr && itemFor(from)->isSelected();
+    if (ComponentGraphicsItem* item = itemFor(from)) {
+        m_scene->removeItem(item);
+        m_items.erase(std::remove(m_items.begin(), m_items.end(), item), m_items.end());
+        delete item;
+    }
+    renderInstance(*proj->findInstance(to));
+    if (ComponentGraphicsItem* item = itemFor(to); item != nullptr && wasSelected) {
+        item->setSelected(true);
+    }
+    updateActionStates();
 }
 
 // ---------------------------------------------------------------------------
 // Scene projection
 // ---------------------------------------------------------------------------
+
+ComponentGraphicsItem* MainWindow::itemFor(const core::InstanceId& id) const
+{
+    for (ComponentGraphicsItem* item : m_items) {
+        if (item->instanceId() == id) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+ComponentGraphicsItem* MainWindow::selectedComponentItem() const
+{
+    for (ComponentGraphicsItem* item : m_items) {
+        if (item->isSelected()) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+void MainWindow::renderInstance(const project::ComponentInstance& instance)
+{
+    if (instance.referenceState != project::ReferenceState::Resolved || !instance.catalogReference
+        || m_deps.componentManager == nullptr) {
+        return; // unresolved/legacy instances stay in the model but are not rendered
+    }
+    const project::CatalogReference& ref = *instance.catalogReference;
+    const auto snapshot = m_deps.componentManager->load(ref.scope, ref.componentId, ref.versionId);
+    if (!snapshot) {
+        return;
+    }
+    auto* gfx = new ComponentGraphicsItem(snapshot.value(), instance.instanceId, m_scene->coordinateSystem());
+    gfx->setPositionMm(instance.position);
+    gfx->setRotationDegrees(instance.rotationDegrees);
+    m_scene->addItem(gfx);
+    m_items.push_back(gfx);
+}
 
 void MainWindow::clearSceneItems()
 {
@@ -426,21 +899,98 @@ void MainWindow::rebuildSceneFromProject()
         m_scene->setGridMm(c.gridMm, c.gridMm * 10.0);
     }
     for (const project::ComponentInstance& instance : proj->instances()) {
-        if (instance.referenceState != project::ReferenceState::Resolved || !instance.catalogReference
-            || m_deps.componentManager == nullptr) {
-            continue; // unresolved/legacy instances are preserved in the model but not rendered yet
-        }
-        const project::CatalogReference& ref = *instance.catalogReference;
-        const auto snapshot = m_deps.componentManager->load(ref.scope, ref.componentId, ref.versionId);
-        if (!snapshot) {
-            continue;
-        }
-        auto* gfx = new ComponentGraphicsItem(snapshot.value(), instance.instanceId, m_scene->coordinateSystem());
-        gfx->setPositionMm(instance.position);
-        m_scene->addItem(gfx);
-        m_items.push_back(gfx);
+        renderInstance(instance);
     }
     m_view->fitSheet();
+}
+
+// ---------------------------------------------------------------------------
+// Input: drag-to-move detection + cursor snap / anchor readout
+// ---------------------------------------------------------------------------
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (m_view && watched == m_view->viewport()) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::LeftButton && !m_view->spaceHeld()) {
+                if (auto* item = dynamic_cast<ComponentGraphicsItem*>(m_view->itemAt(me->pos()))) {
+                    m_dragActive = true;
+                    m_dragId = item->instanceId();
+                    m_dragStartMm = item->positionMm();
+                }
+            }
+            break;
+        }
+        case QEvent::MouseMove:
+            updateSnapReadout(static_cast<QMouseEvent*>(event)->pos());
+            break;
+        case QEvent::MouseButtonRelease: {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (m_dragActive && me->button() == Qt::LeftButton) {
+                m_dragActive = false;
+                if (ComponentGraphicsItem* item = itemFor(m_dragId)) {
+                    const core::PointMm dropped = canvas::CoordinateSystem::snapToGrid(item->positionMm(), gridMm());
+                    if (dropped != m_dragStartMm) {
+                        // The free drag already moved the item; the command records
+                        // the snapped result and makes it a single undoable step.
+                        m_undoStack->push(new MoveInstanceCommand(this, m_dragId, m_dragStartMm, dropped));
+                    } else {
+                        item->setPositionMm(m_dragStartMm); // re-snap in place
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+double MainWindow::gridMm() const
+{
+    const project::Project* p = m_deps.projectService ? m_deps.projectService->currentProject() : nullptr;
+    if (p != nullptr && p->canvas().gridMm > 0.0) {
+        return p->canvas().gridMm;
+    }
+    return 1.0;
+}
+
+void MainWindow::updateSnapReadout(const QPoint& viewportPos)
+{
+    if (m_view == nullptr) {
+        return;
+    }
+    const core::PointMm mm = m_view->mmAt(viewportPos);
+    const core::PointMm snapped = canvas::CoordinateSystem::snapToGrid(mm, gridMm());
+    m_statusSnap->setText(tr("Snap: %1, %2 mm").arg(snapped.x, 0, 'f', 2).arg(snapped.y, 0, 'f', 2));
+
+    // Nearest pin anchor within a screen-pixel tolerance. Uses scene→viewport
+    // mapping (zoom+pan) and the item's own transform (rotation), so it stays
+    // correct after zoom, pan, and rotation. Geometric assistance only — this
+    // forms no electrical net.
+    double bestPx = kAnchorTolerancePx;
+    QString bestText;
+    for (const ComponentGraphicsItem* item : m_items) {
+        for (const components::Pin& pin : item->snapshot().pins()) {
+            const QPointF scenePos = item->anchorScenePos(pin.anchor());
+            const QPoint vp = m_view->mapFromScene(scenePos);
+            const double d = std::hypot(static_cast<double>(vp.x() - viewportPos.x()),
+                                        static_cast<double>(vp.y() - viewportPos.y()));
+            if (d <= bestPx) {
+                bestPx = d;
+                const core::PointMm anchorMm = m_scene->coordinateSystem().toMm(scenePos);
+                bestText = tr("Pin %1·%2 @ %3, %4 mm")
+                               .arg(item->instanceId().value(), pin.pinNumber)
+                               .arg(anchorMm.x, 0, 'f', 2)
+                               .arg(anchorMm.y, 0, 'f', 2);
+            }
+        }
+    }
+    m_statusAnchor->setText(bestText.isEmpty() ? tr("Pin: —") : tr("Pin: %1").arg(bestText));
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +1034,12 @@ void MainWindow::updateActionStates()
     m_actSaveAs->setEnabled(hasProject);
     m_actClose->setEnabled(hasProject);
     m_actPlace->setEnabled(hasProject && m_catalogList->currentItem() != nullptr);
+    const bool hasSelection = selectedComponentItem() != nullptr;
+    m_actRotate->setEnabled(hasProject && hasSelection);
+    m_actDelete->setEnabled(hasProject && hasSelection);
+    m_actRename->setEnabled(hasProject && hasSelection);
+    m_actValue->setEnabled(hasProject && hasSelection);
+    m_actReference->setEnabled(hasProject && hasSelection);
 }
 
 void MainWindow::reportError(const core::Error& error)

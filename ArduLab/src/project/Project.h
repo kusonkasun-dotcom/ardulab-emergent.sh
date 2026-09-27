@@ -55,6 +55,7 @@ struct ComponentInstance final
     core::InstanceId instanceId;              ///< "U1", "R3" — preserved exactly.
     QString libraryId;                        ///< Legacy `id`/library field, preserved verbatim.
     QString displayName;
+    QString value;                            ///< Engineering value label ("10k", "100nF"); free text.
     core::PointMm position;                   ///< Placement on the A3 sheet, mm.
     double rotationDegrees = 0.0;
     std::optional<CatalogReference> catalogReference;
@@ -88,8 +89,14 @@ public:
 
     [[nodiscard]] const ComponentInstance* findInstance(const core::InstanceId& id) const noexcept;
 
+    /// Mutable lookup used by interactive edits (move/rotate/property change).
+    [[nodiscard]] ComponentInstance* findInstanceMutable(const core::InstanceId& id) noexcept;
+
     /// Adds an instance; fails with AlreadyExists on duplicate instance ID.
     [[nodiscard]] bool addInstance(ComponentInstance instance);
+
+    /// Removes an instance by ID; returns false if it was not present.
+    [[nodiscard]] bool removeInstance(const core::InstanceId& id);
 
     [[nodiscard]] std::size_t unresolvedReferenceCount() const noexcept;
 

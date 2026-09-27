@@ -213,7 +213,11 @@ private slots:
         QCOMPARE(events, (QStringList{QStringLiteral("opened:Bench"), QStringLiteral("saved"), QStringLiteral("saved"),
                                       QStringLiteral("closed"), QStringLiteral("opened:Bench")}));
 
-        QCOMPARE(service.open(QStringLiteral("/nonexistent/x.FAL")).error().code(), ErrorCode::ProjectAlreadyOpen);
+        // A failing open is transactional: the error is reported and the
+        // document that is already open stays open and unchanged.
+        QCOMPARE(service.open(QStringLiteral("/nonexistent/x.FAL")).error().code(), ErrorCode::IoFailure);
+        QVERIFY(service.hasOpenProject());
+        QCOMPARE(service.currentProject()->metadata().name, QStringLiteral("Bench"));
         service.close();
         QCOMPARE(service.open(dir.filePath(QStringLiteral("missing.FAL"))).error().code(), ErrorCode::IoFailure);
     }

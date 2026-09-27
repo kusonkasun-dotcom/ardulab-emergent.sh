@@ -70,7 +70,10 @@ public:
     /// Create a new empty A3 project. Fails with ProjectAlreadyOpen if one is open.
     [[nodiscard]] core::Status createNew(const QString& name);
 
-    /// Open a .FAL file. Fails with ProjectAlreadyOpen if one is open.
+    /// Open a .FAL file. Transactional: the document is fully read and resolved
+    /// before it replaces the current project, so a corrupt or unreadable file
+    /// leaves the open project untouched. Replacing an open project publishes
+    /// ProjectClosedEvent before ProjectOpenedEvent.
     [[nodiscard]] core::Result<ProjectOpenResult> open(const QString& filePath);
 
     /// Save to the current path (fails with InvalidState if never saved).

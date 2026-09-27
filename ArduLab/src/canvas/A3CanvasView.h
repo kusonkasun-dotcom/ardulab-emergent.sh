@@ -28,6 +28,10 @@ public:
     [[nodiscard]] ViewportController* viewportController() const noexcept { return m_viewport; }
     [[nodiscard]] A3CanvasScene* canvasScene() const noexcept { return m_scene; }
 
+    /// True while the pan modifier (Space) is held — lets the UI distinguish a
+    /// pan-drag from an item-drag without duplicating input state.
+    [[nodiscard]] bool spaceHeld() const noexcept { return m_spaceHeld; }
+
     /// Fit the whole sheet into the current widget size.
     void fitSheet();
 

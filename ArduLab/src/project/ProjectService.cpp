@@ -38,9 +38,10 @@ core::Status ProjectService::createNew(const QString& name)
 
 core::Result<ProjectOpenResult> ProjectService::open(const QString& filePath)
 {
-    if (m_project) {
-        return core::Error(core::ErrorCode::ProjectAlreadyOpen, QStringLiteral("close the current project first"));
-    }
+    // Transactional open: the file is read, parsed and resolved into a local
+    // Project first. Any failure (I/O, corrupt JSON, unsupported version)
+    // returns an error with the currently open document untouched — a broken
+    // file can never replace the active project.
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         return core::Error(core::ErrorCode::IoFailure, QStringLiteral("cannot open .FAL file: %1").arg(file.errorString()), filePath);
@@ -60,6 +61,8 @@ core::Result<ProjectOpenResult> ProjectService::open(const QString& filePath)
     resolveReferences(project, result);
     project.markClean();
 
+    // Only now is the previous document released.
+    close();
     m_project.emplace(std::move(project));
     m_filePath = QFileInfo(filePath).absoluteFilePath();
 

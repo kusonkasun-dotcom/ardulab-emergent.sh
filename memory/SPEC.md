@@ -17,7 +17,39 @@ Authoritative documents (do not modify without approval):
 container; Windows/MSVC preset authored, not yet run by the user).
 
 **Phase 2 (SQLite catalog + migrations + canonical JSON import) — COMPLETE and building**
-(Linux/GCC verified in container: 11/11 Qt Test suites pass). Windows/MSVC **NOT VERIFIED**.
+(Linux/GCC verified in container). Windows/MSVC **NOT VERIFIED**.
+
+**MVP polish (cursor snap readout · undo/redo · `.FAL` roundtrip) — COMPLETE.**
+Actual verification (Linux/GCC, offscreen QPA): `ctest` **14/14 suites pass, 108 test
+functions, 0 failed, 0 skipped**. Windows/MSVC and interactive (on-screen) GUI use remain
+**NOT VERIFIED** — only headless Linux runs have been executed.
+
+MVP polish detail:
+- **Cursor snap readout** — status bar shows `Snap: x, y mm` (grid-quantised millimeters) plus
+  `Pin <instance>·<pin> @ x, y mm` for the nearest pin anchor within a **12 screen-pixel**
+  tolerance. Uses scene→viewport mapping and the item transform, so it stays correct after
+  zoom, pan and rotation. Geometric assistance only — it forms **no electrical connection**.
+- **Undo/redo** — one `QUndoStack` in `MainWindow` with `PlaceInstanceCommand`,
+  `DeleteInstanceCommand`, `MoveInstanceCommand`, `RotateInstanceCommand`,
+  `RenameInstanceCommand` (display name), `ChangeValueCommand` (engineering value) and
+  `ChangeReferenceCommand` (reference designator = instance id). One drag = exactly one step
+  (press records the start, release pushes the grid-snapped result). The unsaved-changes
+  indicator follows the stack's clean index: Save → clean, Undo below it → dirty,
+  Redo back to it → clean.
+- **`.FAL` roundtrip** — save → close → reopen preserves instance id, library id, value,
+  display name, position, rotation and the embedded fallback snapshot. A **changed or
+  unavailable catalog** opens the stored snapshot as `Unresolved` (never substituted).
+  `ProjectService::open` is now **transactional**: a corrupt/unreadable file returns an error
+  and leaves the document currently open untouched (previously the UI closed first and lost it).
+
+New/changed for MVP polish:
+- `ComponentInstance::value` (`"value"` key in `.FAL`, interpreted + round-tripped).
+- `ProjectService::open` transactional (no `ProjectAlreadyOpen` guard; publishes
+  `ProjectClosedEvent` then `ProjectOpenedEvent` when it replaces a document).
+- `MainWindow::~MainWindow` tears down connections/event filter before children are destroyed
+  (fixed a real shutdown crash: child signals reaching a half-destroyed window).
+- Tests: `tests/ui/EditUndoRedoTests.cpp`, `tests/ui/CursorSnapReadoutTests.cpp`,
+  shared `tests/ui/EditingFixture.h`, extended `tests/project/ProjectRoundtripTests.cpp`.
 
 Build/verify: `cd /app/ArduLab && cmake --preset linux-debug && cmake --build --preset linux-debug && ctest --preset linux-debug`
 Toolchain in container: cmake, ninja-build, qt6-base-dev 6.4.2 (incl. Qt6::Sql + libqsqlite),
@@ -115,9 +147,9 @@ Schematic, Simulation, PCB, Manufacturing, Firmware, AI.
 
 ## Possible next steps (need approval)
 
-- Post-Phase-2 MVP polish flagged by the user: cursor snap readout (grid-snapped mm + nearest pin
-  anchor in the status bar), undo/redo, and hardened `.FAL` snapshot persistence.
+- Windows/MSVC build + interactive GUI verification (presets authored; **NOT VERIFIED**).
 - Downstream catalog tables (datasheets/footprints/symbols/simulation models) + their migrations.
 - Legacy JSON import once a real legacy fixture is supplied.
-- Windows/MSVC build verification (preset authored; NOT VERIFIED on Linux).
+- Splitting the `QUndoCommand` classes out of `MainWindow.cpp` into `src/ui/commands/`
+  (functional today, deferred on purpose during MVP closing).
 

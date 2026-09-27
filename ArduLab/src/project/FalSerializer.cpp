@@ -15,13 +15,14 @@ using components::CatalogScope;
 const QString kInstanceKeyId = QStringLiteral("instance_id");
 const QString kInstanceKeyLibraryId = QStringLiteral("id");
 const QString kInstanceKeyName = QStringLiteral("name");
+const QString kInstanceKeyValue = QStringLiteral("value");
 const QString kInstanceKeyPosition = QStringLiteral("position");
 const QString kInstanceKeyRotation = QStringLiteral("rotation_deg");
 const QString kInstanceKeyCatalogRef = QStringLiteral("catalog_reference");
 
 const QSet<QString>& interpretedInstanceKeys()
 {
-    static const QSet<QString> keys{kInstanceKeyId, kInstanceKeyLibraryId, kInstanceKeyName,
+    static const QSet<QString> keys{kInstanceKeyId, kInstanceKeyLibraryId, kInstanceKeyName, kInstanceKeyValue,
                                     kInstanceKeyPosition, kInstanceKeyRotation, kInstanceKeyCatalogRef};
     return keys;
 }
@@ -104,6 +105,7 @@ ComponentInstance readInstance(const QJsonObject& obj, int index, QStringList& w
     instance.instanceId = core::InstanceId(obj.value(kInstanceKeyId).toString());
     instance.libraryId = obj.value(kInstanceKeyLibraryId).toString();
     instance.displayName = obj.value(kInstanceKeyName).toString();
+    instance.value = obj.value(kInstanceKeyValue).toString();
 
     const QString label = instance.instanceId.isValid()
         ? instance.instanceId.value()
@@ -138,6 +140,9 @@ QJsonObject writeInstance(const ComponentInstance& instance)
     }
     if (!instance.displayName.isEmpty()) {
         obj.insert(kInstanceKeyName, instance.displayName);
+    }
+    if (!instance.value.isEmpty()) {
+        obj.insert(kInstanceKeyValue, instance.value);
     }
     QJsonObject pos;
     pos.insert(QStringLiteral("x_mm"), instance.position.x);
