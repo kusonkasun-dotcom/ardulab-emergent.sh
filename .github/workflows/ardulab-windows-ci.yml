@@ -1,0 +1,57 @@
+
+name: ArduLab Windows CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Windows MinGW Qt6 Build and CTest
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install MinGW, CMake, Ninja, and Qt6
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-qt6-base
+
+      - name: Configure ArduLab
+        run: >
+          cmake -S ArduLab
+          -B ArduLab/build/ci
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DARDULAB_BUILD_TESTS=ON
+
+      - name: Build ArduLab
+        run: cmake --build ArduLab/build/ci --parallel 2
+
+      - name: Run ArduLab tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >
+          ctest --test-dir ArduLab/build/ci
+          --output-on-failure
