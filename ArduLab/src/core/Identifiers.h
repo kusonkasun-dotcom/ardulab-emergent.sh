@@ -45,32 +45,37 @@ struct Pin {};
 struct Package {};
 struct Project {};
 struct Net {};
+struct ConnectionPoint {};
 struct Category {};
 struct Manufacturer {};
 } // namespace tags
 
+
 /// Stable logical catalog identity — "R1-A-0805-10K".
 using ComponentId = TypedId<tags::Component>;
 
-/// Immutable catalog revision — "R1-A-0805-10K@1.0.0".
+/// Immutable catalog revision.
 using ComponentVersionId = TypedId<tags::ComponentVersion>;
 
-/// Project-local placed occurrence — "U1", "R3".
+/// Project-local placed occurrence.
 using InstanceId = TypedId<tags::ProjectInstance>;
 
-/// Stable pin record identity within a component version.
+/// Stable pin record identity.
 using PinId = TypedId<tags::Pin>;
 
-/// Stable package identity — "QFN48", "0805".
+/// Stable package identity.
 using PackageId = TypedId<tags::Package>;
 
-/// Project identity (UUID text).
+/// Project identity.
 using ProjectId = TypedId<tags::Project>;
 
-/// Project electrical relationship identity (future Connection Core).
+/// Electrical network identity.
 using NetId = TypedId<tags::Net>;
 
-/// Category code — "MCU", "PASSIVE".
+/// Electrical connection point identity.
+using ConnectionPointId = TypedId<tags::ConnectionPoint>;
+
+/// Category code.
 using CategoryId = TypedId<tags::Category>;
 
 /// Manufacturer identity.
