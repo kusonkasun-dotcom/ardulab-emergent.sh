@@ -28,9 +28,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ArduLabWarnings)
 
 # --------------------------------------------------------------------------
-# Qt6 (Plan §11: Core, Gui, Widgets; Sql is deferred to the database phase)
+# Qt6
 # --------------------------------------------------------------------------
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql)
+
 if(ARDULAB_BUILD_TESTS)
     find_package(Qt6 REQUIRED COMPONENTS Test)
 endif()
@@ -38,22 +39,12 @@ endif()
 set(ARDULAB_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 # --------------------------------------------------------------------------
-# Module targets. Each module is a separate static library so that the
-# allowed-dependency table (Plan §3.1) is enforced by the linker:
-#
-#   core        -> Qt6::Core
-#   components  -> core                    (no Sql, no Widgets)
-#   project     -> core, components        (no Widgets)
-#   canvas      -> core, Qt6::Widgets      (no project, no components)
-#   ui          -> canvas, components, project, Qt6::Widgets
-#   app (exe)   -> everything above
-#
-# Module blocks are appended milestone by milestone below.
+# Module targets
 # --------------------------------------------------------------------------
 
 # ==== MODULE TARGETS BEGIN ====
 
-# ---- core (Milestone 2) --------------------------------------------------
+# ---- core -----------------------------------------------------------------
 add_library(ardulab_core STATIC
     ${ARDULAB_SRC}/core/Result.h
     ${ARDULAB_SRC}/core/Error.h
@@ -63,12 +54,13 @@ add_library(ardulab_core STATIC
     ${ARDULAB_SRC}/core/EventBus.h
     ${ARDULAB_SRC}/core/EventBus.cpp
 )
+
 target_include_directories(ardulab_core PUBLIC ${ARDULAB_SRC})
 target_link_libraries(ardulab_core PUBLIC Qt6::Core)
 ardulab_apply_warnings(ardulab_core)
 
-# ---- components (Milestone 3) --------------------------------------------
-# Component Engine: depends on core only. Must never link Qt6::Sql/Widgets.
+
+# ---- components -----------------------------------------------------------
 add_library(ardulab_components STATIC
     ${ARDULAB_SRC}/components/Component.h
     ${ARDULAB_SRC}/components/ComponentVersion.h
@@ -87,11 +79,12 @@ add_library(ardulab_components STATIC
     ${ARDULAB_SRC}/components/InMemoryComponentCatalog.h
     ${ARDULAB_SRC}/components/InMemoryComponentCatalog.cpp
 )
+
 target_link_libraries(ardulab_components PUBLIC ardulab_core)
 ardulab_apply_warnings(ardulab_components)
 
-# ---- project (Milestone 4) -----------------------------------------------
-# Project domain + .FAL adapter: depends on core and component *value* types.
+
+# ---- project --------------------------------------------------------------
 add_library(ardulab_project STATIC
     ${ARDULAB_SRC}/project/Project.h
     ${ARDULAB_SRC}/project/Project.cpp
@@ -102,12 +95,16 @@ add_library(ardulab_project STATIC
     ${ARDULAB_SRC}/project/FalSerializer.h
     ${ARDULAB_SRC}/project/FalSerializer.cpp
 )
-target_link_libraries(ardulab_project PUBLIC ardulab_core ardulab_components)
+
+target_link_libraries(ardulab_project PUBLIC
+    ardulab_core
+    ardulab_components
+)
+
 ardulab_apply_warnings(ardulab_project)
 
-# ---- canvas (Milestone 5) ------------------------------------------------
-# Engineering workspace: depends on core + Qt Gui/Widgets. No project, no
-# components, no persistence.
+
+# ---- canvas ---------------------------------------------------------------
 add_library(ardulab_canvas STATIC
     ${ARDULAB_SRC}/canvas/CoordinateSystem.h
     ${ARDULAB_SRC}/canvas/CoordinateSystem.cpp
@@ -118,35 +115,72 @@ add_library(ardulab_canvas STATIC
     ${ARDULAB_SRC}/canvas/A3CanvasView.h
     ${ARDULAB_SRC}/canvas/A3CanvasView.cpp
 )
-target_link_libraries(ardulab_canvas PUBLIC ardulab_core Qt6::Gui Qt6::Widgets)
+
+target_link_libraries(ardulab_canvas PUBLIC
+    ardulab_core
+    Qt6::Gui
+    Qt6::Widgets
+)
+
 ardulab_apply_warnings(ardulab_canvas)
 
-# ---- connection (Milestone 6, contract-only) -----------------------------
-# Header-only value contracts protecting the future Connection Core boundary.
-add_library(ardulab_connection INTERFACE)
-target_sources(ardulab_connection INTERFACE
+
+# ---- connection -----------------------------------------------------------
+# Connection Core owns electrical connectivity domain objects.
+# Depends only on core + component contracts.
+
+add_library(ardulab_connection STATIC
     ${ARDULAB_SRC}/connection/CatalogPinRef.h
     ${ARDULAB_SRC}/connection/ConnectionPoint.h
     ${ARDULAB_SRC}/connection/Wire.h
     ${ARDULAB_SRC}/connection/Net.h
-)
-target_link_libraries(ardulab_connection INTERFACE ardulab_core ardulab_components)
+    ${ARDULAB_SRC}/connection/Junction.h
 
-# ---- ui (Milestone 6) ----------------------------------------------------
-# Thin presentation: MainWindow + Renderer adapter. No Sql, no JSON parsing.
+    ${ARDULAB_SRC}/connection/ConnectivityGraph.h
+    ${ARDULAB_SRC}/connection/ConnectivityGraph.cpp
+
+    ${ARDULAB_SRC}/connection/ConnectivityManager.h
+    ${ARDULAB_SRC}/connection/ConnectivityManager.cpp
+
+    ${ARDULAB_SRC}/connection/NetIdentity.h
+    ${ARDULAB_SRC}/connection/NetIdentity.cpp
+
+    ${ARDULAB_SRC}/connection/ConnectivityValidator.h
+    ${ARDULAB_SRC}/connection/ConnectivityValidator.cpp
+
+    ${ARDULAB_SRC}/connection/ValidationResult.h
+    ${ARDULAB_SRC}/connection/ValidationResult.cpp
+)
+
+target_include_directories(ardulab_connection PUBLIC ${ARDULAB_SRC})
+
+target_link_libraries(ardulab_connection
+    PUBLIC
+    ardulab_core
+    ardulab_components
+)
+
+ardulab_apply_warnings(ardulab_connection)
+# ---- ui -------------------------------------------------------------------
 add_library(ardulab_ui STATIC
     ${ARDULAB_SRC}/ui/MainWindow.h
     ${ARDULAB_SRC}/ui/MainWindow.cpp
     ${ARDULAB_SRC}/ui/ComponentGraphicsItem.h
     ${ARDULAB_SRC}/ui/ComponentGraphicsItem.cpp
 )
-target_link_libraries(ardulab_ui PUBLIC ardulab_canvas ardulab_components ardulab_project Qt6::Widgets)
+
+target_link_libraries(ardulab_ui
+    PUBLIC
+    ardulab_canvas
+    ardulab_components
+    ardulab_project
+    Qt6::Widgets
+)
+
 ardulab_apply_warnings(ardulab_ui)
 
-# ---- database (Milestone 7: Phase 2 SQLite catalog + JSON import) --------
-# SQLite catalog adapter, migration framework, and JSON importer. Depends on
-# core + components (domain) + Qt Sql. Implements IComponentCatalog and
-# IComponentImporter; the UI never links this module (it uses the interfaces).
+
+# ---- database -------------------------------------------------------------
 add_library(ardulab_database STATIC
     ${ARDULAB_SRC}/database/CatalogPaths.h
     ${ARDULAB_SRC}/database/CatalogPaths.cpp
@@ -168,37 +202,87 @@ add_library(ardulab_database STATIC
     ${ARDULAB_SRC}/database/import/ComponentJsonImporter.h
     ${ARDULAB_SRC}/database/import/ComponentJsonImporter.cpp
 )
-target_link_libraries(ardulab_database PUBLIC ardulab_core ardulab_components Qt6::Core Qt6::Sql)
+
+target_link_libraries(ardulab_database
+    PUBLIC
+    ardulab_core
+    ardulab_components
+    Qt6::Core
+    Qt6::Sql
+)
+
 ardulab_apply_warnings(ardulab_database)
+
 
 # ==== MODULE TARGETS END ====
 
+
 # --------------------------------------------------------------------------
-# Application executable (composition root)
+# Application executable
 # --------------------------------------------------------------------------
+
 qt_add_executable(ArduLab
     ${ARDULAB_SRC}/main.cpp
     ${ARDULAB_SRC}/app/ApplicationBootstrap.h
     ${ARDULAB_SRC}/app/ApplicationBootstrap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/ardulab.qrc
+    src/connection/ValidationResult.h
+    src/connection/ConnectivityValidator.h
+    src/connection/ConnectivityValidator.cpp
+    src/connection/ValidationResult.h
+    src/connection/ConnectivityValidator.h
+    src/connection/ConnectivityValidator.cpp
+    src/connection/ValidationResult.cpp
 )
+
 target_include_directories(ArduLab PRIVATE ${ARDULAB_SRC})
-target_compile_definitions(ArduLab PRIVATE ARDULAB_VERSION_STRING="${PROJECT_VERSION}")
-target_link_libraries(ArduLab PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+
+target_compile_definitions(ArduLab PRIVATE
+    ARDULAB_VERSION_STRING="${PROJECT_VERSION}"
+)
+
+target_link_libraries(ArduLab
+    PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+)
+
 set_target_properties(ArduLab PROPERTIES
     WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE FALSE
+    MACOS_BUNDLE FALSE
 )
+
 ardulab_apply_warnings(ArduLab)
 
+
 # ==== APP MODULE LINKS BEGIN ====
-target_link_libraries(ArduLab PRIVATE ardulab_core ardulab_components ardulab_project ardulab_canvas ardulab_ui ardulab_database)
+
+target_link_libraries(ArduLab PRIVATE
+    ardulab_core
+    ardulab_components
+    ardulab_project
+    ardulab_canvas
+    ardulab_ui
+    ardulab_database
+    ardulab_connection
+)
+
 # ==== APP MODULE LINKS END ====
+
 
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
+
 if(ARDULAB_BUILD_TESTS)
+
+    include(CTest)
+
     enable_testing()
+
+    message(STATUS "ArduLab tests enabled")
+
     add_subdirectory(tests)
+
 endif()

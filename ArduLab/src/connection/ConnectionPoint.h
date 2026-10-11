@@ -6,6 +6,10 @@
 // (v0.1.4) from a placed instance + CatalogPinRef. Persisted in .FAL under
 // "connections.points"; never a catalog row.
 //
+// Each connection point has its own stable identity so that wires and nets
+// can reference electrical attachment points without relying on duplicated
+// instance/pin strings.
+//
 // No behaviour is implemented in the foundation phase.
 
 #include "connection/CatalogPinRef.h"
@@ -14,11 +18,35 @@
 
 namespace ardulab::connection {
 
+
 struct ConnectionPoint final
 {
-    core::InstanceId instanceId;   ///< Placed component this point belongs to.
-    CatalogPinRef pin;             ///< Exact catalog pin.
-    core::PointMm sheetPosition;   ///< Resolved PinAnchor position on the sheet, mm.
+    /**
+     * Stable identity of this project-local electrical point.
+     *
+     * Example:
+     * "CP-U1-GPIO23"
+     */
+    core::ConnectionPointId pointId;
+
+
+    /**
+     * Placed component this point belongs to.
+     */
+    core::InstanceId instanceId;
+
+
+    /**
+     * Exact catalog pin reference.
+     */
+    CatalogPinRef pin;
+
+
+    /**
+     * Resolved PinAnchor position on the sheet, mm.
+     */
+    core::PointMm sheetPosition;
 };
+
 
 } // namespace ardulab::connection
