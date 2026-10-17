@@ -1,0 +1,138 @@
+name: "ArduLab AI Agent Task"
+description: "Request a scoped, reviewable task for an ArduLab development agent."
+title: "[AGENT TASK] "
+labels:
+  - agent-task
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow the Agent Registry, Supervisor Handover, and ArduLab development rules.
+        Creating an Issue is not approval to modify code or merge a Pull Request.
+        The ArduLab Project Owner retains final authority.
+
+  - type: dropdown
+    id: agent-role
+    attributes:
+      label: Responsible agent role
+      description: Proposed responsibility only; this does not grant repository access.
+      options:
+        - Architecture Agent
+        - Code Development Agent
+        - Validation Agent
+        - Documentation Agent
+        - Research Agent
+        - Supervisor coordination
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Primary module
+      options:
+        - Core
+        - Components
+        - Connectivity
+        - Project
+        - Database
+        - Canvas
+        - UI
+        - QA / CI
+        - Governance / Documentation
+        - Cross-module (requires coordination)
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective and acceptance criteria
+      description: Describe the desired outcome and measurable completion conditions.
+      placeholder: |
+        Objective:
+        Acceptance criteria:
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: permitted-scope
+    attributes:
+      label: Permitted files and changes
+      description: State exact repository paths and what may be changed in each.
+      placeholder: "ArduLab/tests/CMakeLists.txt — register one existing test target"
+    validations:
+      required: true
+
+  - type: textarea
+    id: excluded-scope
+    attributes:
+      label: Excluded files and changes
+      description: State modules, files, and activities outside the approved scope.
+      placeholder: "No production source or toolchain changes; no direct push to main."
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and references
+      description: Related GitHub Issues, PRs, documents, and prerequisites (or None).
+      placeholder: "Refs #4; ArduLab/docs/governance/AGENT_REGISTRY.md"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Estimated change risk
+      options:
+        - Low — documentation or isolated test registration
+        - Medium — localized implementation change
+        - High — architecture, persistence, or cross-module change
+    validations:
+      required: true
+
+  - type: textarea
+    id: architecture-risk
+    attributes:
+      label: Architectural impact, risks, and rollback
+      description: Explain possible regressions and mitigation. Justify if none identified.
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Proposed implementation plan
+      description: Include steps, proposed branch name, and review checkpoints. Await approval.
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: Specify build, CTest, CI, and applicable manual checks. Do not claim unrun tests passed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Completion evidence (update when finished)
+      description: Provide PR, commit, CI run, test results, open risks, and handover notes.
+      placeholder: "Pending — complete after implementation and review."
+
+  - type: checkboxes
+    id: acknowledgments
+    attributes:
+      label: Governance acknowledgment
+      options:
+        - label: I understand this Issue does not authorize implementation until the Project Owner approves the scope.
+          required: true
+        - label: Changes will use a dedicated branch and PR, with required CI checks passing before merge.
+          required: true
+        - label: Agents will not bypass branch protection or merge without Project Owner authorization.
+          required: true
