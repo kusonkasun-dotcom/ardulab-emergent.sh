@@ -132,3 +132,13 @@ ardulab_add_test(
     connection/NetIdentityTests.cpp
     ardulab_connection
 )
+
+# -------------------------------------------------------
+# Components Tests
+# -------------------------------------------------------
+
+ardulab_add_test(
+    PinAnchorTests
+    components/PinAnchorTests.cpp
+    ardulab_components
+)
