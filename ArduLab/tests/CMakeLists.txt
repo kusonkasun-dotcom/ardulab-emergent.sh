@@ -142,3 +142,12 @@ ardulab_add_test(
     components/PinAnchorTests.cpp
     ardulab_components
 )
+# -------------------------------------------------------
+# Database Tests
+# -------------------------------------------------------
+
+ardulab_add_test(
+    CatalogDatabaseTests
+    database/CatalogDatabaseTests.cpp
+    ardulab_database
+)
