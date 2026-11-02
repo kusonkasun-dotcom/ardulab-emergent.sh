@@ -151,3 +151,12 @@ ardulab_add_test(
     database/CatalogDatabaseTests.cpp
     ardulab_database
 )
+# -------------------------------------------------------
+# Database Tests (Continuation)
+# -------------------------------------------------------
+
+ardulab_add_test(
+    SchemaMigratorTests
+    database/SchemaMigratorTests.cpp
+    ardulab_database
+)
